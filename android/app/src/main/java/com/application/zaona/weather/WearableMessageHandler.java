@@ -41,7 +41,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), CHANNEL);
         channel.setMethodCallHandler(this);
         
-        // 初始化小米穿戴SDK API
+        // 初始化小米运动健康SDK API
         nodeApi = Wearable.getNodeApi(context);
         messageApi = Wearable.getMessageApi(context);
         authApi = Wearable.getAuthApi(context);
@@ -83,6 +83,9 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
             case "checkWearApp":
                 checkWearApp(result);
                 break;
+            case "launchWearApp":
+                launchWearApp(result);
+                break;
             default:
                 result.notImplemented();
                 break;
@@ -107,7 +110,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                             result.success("设备连接成功: ID=" + currentNode.id);
                         } else {
                             Log.w(TAG, "没有找到连接的设备");
-                            result.error("NO_DEVICE", "没有找到连接的穿戴设备。请确保：\n1. 穿戴设备已与手机配对\n2. 小米穿戴应用已安装\n3. 设备处于连接状态", null);
+                            result.error("NO_DEVICE", "没有找到连接的穿戴设备\n\n请确保：\n1. 穿戴设备已与手机配对\n2. 小米运动健康已安装\n3. 设备处于连接状态", null);
                         }
                     }
                 })
@@ -115,7 +118,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "获取连接设备失败: " + e.getMessage());
-                        result.error("CONNECTION_ERROR", "获取连接设备失败: " + e.getMessage() + "\n\n请检查：\n1. 小米穿戴应用是否已安装\n2. 设备是否已配对连接", null);
+                        result.error("CONNECTION_ERROR", "获取连接设备失败\n\n" + e.getMessage() + "\n\n请确保：\n1. 小米运动健康已安装\n2. 设备已配对连接", null);
                     }
                 });
     }
@@ -127,7 +130,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
         }
         
         if (currentNode == null) {
-            result.error("NO_DEVICE", "没有连接的设备。请先点击'获取连接设备'按钮", null);
+            result.error("NO_DEVICE", "没有连接的设备\n\n请先连接设备", null);
             return;
         }
         
@@ -149,15 +152,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "权限申请失败: " + e.getMessage());
-                        String errorMsg = "权限申请失败: " + e.getMessage();
-                        
-                        // 根据错误类型提供更具体的提示
-                        if (e.getMessage() != null && e.getMessage().contains("not installed")) {
-                            errorMsg += "\n\n可能的原因：\n1. 小米穿戴应用未安装\n2. 穿戴设备未正确连接\n3. 设备上的配套应用未安装";
-                        } else if (e.getMessage() != null && e.getMessage().contains("permission")) {
-                            errorMsg += "\n\n权限相关错误，请检查设备连接状态";
-                        }
-                        
+                        String errorMsg = "权限申请失败\n\n" + e.getMessage() + "\n\n请确保：\n1. 设备上已安装简明天气快应用\n2. 简明天气快应用为最新版本";
                         result.error("PERMISSION_ERROR", errorMsg, null);
                     }
                 });
@@ -165,32 +160,31 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
 
     private void sendMessage(String message, Result result) {
         if (messageApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "MessageApi或设备未初始化", null);
+            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
             return;
         }
         
-        // 直接发送输入框的消息内容
         Log.d(TAG, "发送消息: " + message);
         messageApi.sendMessage(currentNode.id, message.getBytes())
                 .addOnSuccessListener(new OnSuccessListener<Void>() {
                     @Override
                     public void onSuccess(Void aVoid) {
                         Log.d(TAG, "消息发送成功");
-                        result.success("消息发送成功");
+                        result.success("✓ 消息发送成功");
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "消息发送失败: " + e.getMessage());
-                        result.error("MESSAGE_ERROR", "消息发送失败: " + e.getMessage(), null);
+                        result.error("MESSAGE_ERROR", "消息发送失败\n\n" + e.getMessage(), null);
                     }
                 });
     }
 
     private void startListening(Result result) {
         if (messageApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "MessageApi或设备未初始化", null);
+            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
             return;
         }
         
@@ -199,21 +193,21 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                     @Override
                     public void onSuccess(Void aVoid) {
                         Log.d(TAG, "开始监听消息");
-                        result.success("开始监听消息");
+                        result.success("✓ 开始监听消息");
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "开始监听失败: " + e.getMessage());
-                        result.error("LISTEN_ERROR", "开始监听失败: " + e.getMessage(), null);
+                        result.error("LISTEN_ERROR", "开始监听失败\n\n" + e.getMessage(), null);
                     }
                 });
     }
 
     private void stopListening(Result result) {
         if (messageApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "MessageApi或设备未初始化", null);
+            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
             return;
         }
         
@@ -222,94 +216,77 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                     @Override
                     public void onSuccess(Void aVoid) {
                         Log.d(TAG, "停止监听消息");
-                        result.success("停止监听消息");
+                        result.success("✓ 停止监听消息");
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "停止监听失败: " + e.getMessage());
-                        result.error("STOP_LISTEN_ERROR", "停止监听失败: " + e.getMessage(), null);
+                        result.error("STOP_LISTEN_ERROR", "停止监听失败\n\n" + e.getMessage(), null);
                     }
                 });
     }
 
     private void checkWearableApp(Result result) {
         if (nodeApi == null) {
-            result.error("SDK_ERROR", "NodeApi未初始化", null);
+            result.error("SDK_ERROR", "SDK未初始化", null);
             return;
         }
         
         try {
-            // 检查小米穿戴应用（旧版）
-            boolean isWearableInstalled = false;
-            try {
-                context.getPackageManager().getPackageInfo("com.xiaomi.wearable", 0);
-                isWearableInstalled = true;
-            } catch (Exception ignored) {}
-            
-            // 检查小米运动健康（新版）
             boolean isHealthInstalled = false;
             try {
                 context.getPackageManager().getPackageInfo("com.mi.health", 0);
                 isHealthInstalled = true;
             } catch (Exception ignored) {}
             
-            if (isWearableInstalled || isHealthInstalled) {
-                String installedApps = "";
-                if (isWearableInstalled) installedApps += "小米穿戴 ";
-                if (isHealthInstalled) installedApps += "小米运动健康 ";
-                result.success("✓ 已安装: " + installedApps.trim());
+            if (isHealthInstalled) {
+                result.success("✓ 小米运动健康已安装");
             } else {
                 result.error("APP_NOT_INSTALLED", 
-                    "未检测到小米穿戴相关应用！\n\n" +
-                    "请安装以下任一应用：\n" +
-                    "1. 小米穿戴 (com.xiaomi.wearable)\n" +
-                    "2. 小米运动健康 (com.mi.health)\n\n" +
-                    "从应用商店下载安装后重试。", 
+                    "未检测到小米运动健康\n\n" +
+                    "请从应用商店安装：\n" +
+                    "小米运动健康 (com.mi.health)", 
                     null);
             }
         } catch (Exception e) {
-            Log.e(TAG, "检查小米穿戴应用失败: " + e.getMessage());
-            result.error("CHECK_FAILED", "检查小米穿戴应用失败: " + e.getMessage(), null);
+            Log.e(TAG, "检查运动健康应用失败: " + e.getMessage());
+            result.error("CHECK_FAILED", "检查失败\n\n" + e.getMessage(), null);
         }
     }
 
     private void checkWearApp(Result result) {
         if (nodeApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "NodeApi或设备未初始化。请先获取连接设备", null);
+            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
             return;
         }
         
         if (authApi == null) {
-            result.error("SDK_ERROR", "AuthApi未初始化", null);
+            result.error("SDK_ERROR", "SDK未初始化", null);
             return;
         }
         
-        // 先检查是否有DEVICE_MANAGER权限
         Log.d(TAG, "检查DEVICE_MANAGER权限，设备ID: " + currentNode.id);
         authApi.checkPermission(currentNode.id, Permission.DEVICE_MANAGER)
                 .addOnSuccessListener(new OnSuccessListener<Boolean>() {
                     @Override
                     public void onSuccess(Boolean hasPermission) {
                         if (hasPermission) {
-                            // 有权限，继续检查穿戴设备端应用
-                            Log.d(TAG, "有权限，检查穿戴设备端应用是否安装");
+                            Log.d(TAG, "检查穿戴设备端应用是否安装");
                             nodeApi.isWearAppInstalled(currentNode.id)
                                     .addOnSuccessListener(new OnSuccessListener<Boolean>() {
                                         @Override
                                         public void onSuccess(Boolean isInstalled) {
                                             Log.d(TAG, "穿戴设备端应用检查结果: " + isInstalled);
                                             if (isInstalled) {
-                                                result.success("✓ 穿戴设备端快应用已安装\n\n可以继续申请权限了！");
+                                                result.success("✓ 快应用已安装");
                                             } else {
                                                 result.error("WEAR_APP_NOT_INSTALLED", 
-                                                    "❌ 穿戴设备端快应用未安装！\n\n" +
-                                                    "这是权限申请失败的主要原因。\n\n" +
+                                                    "未检测到简明天气快应用\n\n" +
                                                     "请确保：\n" +
-                                                    "1. 在穿戴设备上安装了包名为 com.application.zaona.weather 的快应用\n" +
-                                                    "2. 快应用和本应用使用相同的签名\n" +
-                                                    "3. 快应用已正确配置 interconnect 功能", 
+                                                    "请从 AstroBox 安装：\n" +
+                                                    "简明天气快应用", 
                                                     null);
                                             }
                                         }
@@ -317,22 +294,15 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                                     .addOnFailureListener(new OnFailureListener() {
                                         @Override
                                         public void onFailure(@NonNull Exception e) {
-                                            Log.e(TAG, "检查穿戴设备端应用失败: " + e.getMessage());
-                                            result.error("CHECK_FAILED", 
-                                                "检查穿戴设备端应用失败\n\n" + e.getMessage(), 
-                                                null);
+                                            Log.e(TAG, "检查快应用失败: " + e.getMessage());
+                                            result.error("CHECK_FAILED", "检查失败\n\n" + e.getMessage(), null);
                                         }
                                     });
                         } else {
-                            // 没有权限，提示用户先申请权限
-                            Log.w(TAG, "没有DEVICE_MANAGER权限，无法检查穿戴设备端应用");
+                            Log.w(TAG, "没有DEVICE_MANAGER权限");
                             result.error("PERMISSION_REQUIRED", 
-                                "⚠️ 需要先申请权限\n\n" +
-                                "检查穿戴设备端应用需要DEVICE_MANAGER权限。\n\n" +
-                                "建议操作顺序：\n" +
-                                "1. 先点击【申请权限】\n" +
-                                "2. 再点击【检查穿戴设备端快应用】\n\n" +
-                                "注意：如果申请权限失败，很可能就是因为穿戴设备端快应用未安装。", 
+                                "需要先申请权限\n\n" +
+                                "检查快应用需要设备管理权限", 
                                 null);
                         }
                     }
@@ -341,8 +311,35 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "检查权限失败: " + e.getMessage());
-                        result.error("PERMISSION_CHECK_FAILED", 
-                            "检查权限失败\n\n" + e.getMessage(), 
+                        result.error("PERMISSION_CHECK_FAILED", "检查权限失败\n\n" + e.getMessage(), null);
+                    }
+                });
+    }
+
+    private void launchWearApp(Result result) {
+        if (nodeApi == null || currentNode == null) {
+            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
+            return;
+        }
+        
+        Log.d(TAG, "启动快应用，设备ID: " + currentNode.id);
+        nodeApi.launchWearApp(currentNode.id, "/")
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        Log.d(TAG, "启动快应用成功");
+                        result.success("✓ 快应用启动成功");
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.e(TAG, "启动快应用失败: " + e.getMessage());
+                        result.error("LAUNCH_FAILED", 
+                            "启动快应用失败\n\n" + e.getMessage() + "\n\n" +
+                            "请确保：\n" +
+                            "1. 已安装简明天气快应用\n" +
+                            "2. 简明天气快应用为最新版本", 
                             null);
                     }
                 });

@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'wearable_service.dart';
+import 'weather_page.dart';
 
-void main() {
+Future<void> main() async {
+  // 加载环境变量
+  await dotenv.load(fileName: ".env");
+  
   runApp(const MyApp());
 }
 
@@ -10,13 +16,40 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '简明天气同步器',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
-      home: const WearableCommunicationPage(),
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        ColorScheme lightColorScheme;
+        ColorScheme darkColorScheme;
+
+        if (lightDynamic != null && darkDynamic != null) {
+          // 使用系统动态配色（莫奈主题）
+          lightColorScheme = lightDynamic.harmonized();
+          darkColorScheme = darkDynamic.harmonized();
+        } else {
+          // 降级方案：使用默认蓝色主题
+          lightColorScheme = ColorScheme.fromSeed(
+            seedColor: Colors.blue,
+          );
+          darkColorScheme = ColorScheme.fromSeed(
+            seedColor: Colors.blue,
+            brightness: Brightness.dark,
+          );
+        }
+
+        return MaterialApp(
+          title: '简明天气同步器',
+          theme: ThemeData(
+            colorScheme: lightColorScheme,
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: darkColorScheme,
+            useMaterial3: true,
+          ),
+          themeMode: ThemeMode.system,
+          home: const WearableCommunicationPage(),
+        );
+      },
     );
   }
 }
@@ -29,10 +62,10 @@ class WearableCommunicationPage extends StatefulWidget {
 }
 
 class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
-  final TextEditingController _messageController = TextEditingController();
-  String _statusMessage = '准备就绪';
   String _receivedMessage = '';
-  bool _isListening = false;
+  bool _isConnecting = false;
+  bool _isConnected = false;
+  String _deviceId = '';
 
   @override
   void initState() {
@@ -43,273 +76,395 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
         _receivedMessage = message;
       });
     });
+    
+    // 自动启动连接和监听
+    _autoConnect();
+  }
+
+  /// 自动连接设备
+  Future<void> _autoConnect() async {
+    // 自动开始监听
+    try {
+      await WearableService.startListening();
+    } catch (e) {
+      // 监听失败不影响主流程
+    }
+    
+    // 自动连接设备
+    await _connectDevice();
   }
 
   @override
   void dispose() {
-    _messageController.dispose();
     super.dispose();
   }
 
-  void _updateStatus(String message) {
+  /// 一键连接设备
+  Future<void> _connectDevice() async {
+    if (_isConnecting) return;
+    
     setState(() {
-      _statusMessage = message;
+      _isConnecting = true;
     });
-  }
-
-  Future<void> _checkWearableApp() async {
-    try {
-      _updateStatus('正在检查小米穿戴/运动健康应用...');
-      final result = await WearableService.checkWearableApp();
-      _updateStatus(result);
-    } catch (e) {
-      _updateStatus('错误: $e');
-    }
-  }
-
-  Future<void> _checkWearApp() async {
-    try {
-      _updateStatus('正在检查穿戴设备端快应用...');
-      final result = await WearableService.checkWearApp();
-      _updateStatus(result);
-    } catch (e) {
-      _updateStatus('错误: $e');
-    }
-  }
-
-  Future<void> _getConnectedNodes() async {
-    try {
-      _updateStatus('正在获取连接设备...');
-      final result = await WearableService.getConnectedNodes();
-      _updateStatus(result);
-    } catch (e) {
-      _updateStatus('错误: $e');
-    }
-  }
-
-  Future<void> _requestPermissions() async {
-    try {
-      _updateStatus('正在申请权限...');
-      final result = await WearableService.requestPermissions();
-      _updateStatus(result);
-    } catch (e) {
-      _updateStatus('错误: $e');
-    }
-  }
-
-  Future<void> _sendMessage() async {
-    if (_messageController.text.isEmpty) {
-      _updateStatus('请输入要发送的消息');
-      return;
-    }
 
     try {
-      final result = await WearableService.sendMessage(_messageController.text);
-      _updateStatus(result);
-      _messageController.clear();
-    } catch (e) {
-      _updateStatus('错误: $e');
+      final result = await WearableService.connectDevice();
+      
+      if (mounted) {
+        if (result['success']) {
+          // 连接成功，保存设备信息
+          setState(() {
+            _isConnected = true;
+            _deviceId = result['deviceId'] ?? '';
+          });
+          
+          // 显示SnackBar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('设备连接成功'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } else {
+          // 连接失败，清除设备信息
+          setState(() {
+            _isConnected = false;
+            _deviceId = '';
+          });
+          
+          // 显示详细的错误对话框
+          _showErrorDialog(result['step'], result['message']);
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+        });
+      }
     }
   }
 
-  Future<void> _startListening() async {
-    try {
-      final result = await WearableService.startListening();
-      _updateStatus(result);
-      setState(() {
-        _isListening = true;
-      });
-    } catch (e) {
-      _updateStatus('错误: $e');
-    }
-  }
-
-  Future<void> _stopListening() async {
-    try {
-      final result = await WearableService.stopListening();
-      _updateStatus(result);
-      setState(() {
-        _isListening = false;
-      });
-    } catch (e) {
-      _updateStatus('错误: $e');
-    }
+  /// 显示错误对话框
+  void _showErrorDialog(String failedStep, String errorMessage) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 28),
+              const SizedBox(width: 8),
+              const Text('连接失败'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '失败步骤：',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                failedStep,
+                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 15),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '失败原因：',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                errorMessage,
+                style: const TextStyle(fontSize: 15),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _connectDevice();
+              },
+              child: const Text('重试'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('简明天气同步器'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      backgroundColor: colorScheme.surface,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const WeatherPage()),
+          );
+        },
+        icon: const Icon(Icons.cloud),
+        label: const Text('查询天气'),
+        tooltip: '查询天气',
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '设备连接',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: _checkWearableApp,
-                      child: const Text('检查小米穿戴/运动健康'),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: _getConnectedNodes,
-                      child: const Text('获取连接设备'),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: _checkWearApp,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 标题栏
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20.0, top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '简明天气同步器',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
-                      child: const Text('检查穿戴设备端快应用 ⚠️'),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: _requestPermissions,
-                      child: const Text('申请权限'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '发送消息到快应用',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _messageController,
-                      decoration: const InputDecoration(
-                        labelText: '输入要发送的消息',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: _sendMessage,
-                      child: const Text('发送消息'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '消息监听',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ElevatedButton(
-                          onPressed: _isListening ? null : _startListening,
-                          child: const Text('开始监听'),
+                      Text(
+                        'v1.2.0',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: colorScheme.onSurfaceVariant,
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _isListening ? _stopListening : null,
-                          child: const Text('停止监听'),
-                        ),
-                      ],
-                    ),
-                    if (_receivedMessage.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      const Text('收到的消息:'),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(_receivedMessage),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '状态信息',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                
+                // 主功能卡片
+                Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(0.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 已连接设备信息
+                        if (_isConnected && _deviceId.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.watch,
+                                  color: colorScheme.primary,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '已连接设备',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _deviceId,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: colorScheme.onPrimaryContainer,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: _isConnecting ? null : _connectDevice,
+                                  icon: _isConnecting
+                                      ? SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: colorScheme.primary,
+                                          ),
+                                        )
+                                      : const Icon(Icons.refresh),
+                                  tooltip: '刷新设备',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        
+                        // 未连接时显示连接按钮
+                        if (!_isConnected) ...[
+                          Padding(
+                            padding: const EdgeInsets.all(0.0),
+                            child: FilledButton.icon(
+                              onPressed: _isConnecting ? null : _connectDevice,
+                              icon: _isConnecting 
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: colorScheme.onPrimary,
+                                    ),
+                                  )
+                                : const Icon(Icons.link),
+                              label: Text(_isConnecting ? '连接中...' : '连接设备'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                
+                // 收到的消息卡片
+                if (_receivedMessage.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Card(
+                    elevation: 0,
+                    color: colorScheme.tertiaryContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.message_outlined,
+                                color: colorScheme.tertiary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '收到消息',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _receivedMessage,
+                              style: TextStyle(
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      child: Text(_statusMessage),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '说明',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                
+                const SizedBox(height: 16),
+                
+                // 使用说明卡片
+                Card(
+                  elevation: 0,
+                  color: colorScheme.secondaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.lightbulb_outline,
+                              color: colorScheme.secondary,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '提示',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _buildInfoItem('启动时自动连接设备', colorScheme),
+                        const SizedBox(height: 4),
+                        _buildInfoItem('使用天气查询功能可直接发送天气数据到手表', colorScheme),
+                      ],
                     ),
-                    SizedBox(height: 8),
-                    Text('1. 首先点击"检查小米穿戴/运动健康"确认应用已安装'),
-                    Text('2. 点击"获取连接设备"检查是否有连接的穿戴设备'),
-                    Text('3. 点击"申请权限"获取必要的通信权限'),
-                    Text('4. ⚠️ 如果权限申请失败，点击"检查穿戴设备端快应用"'),
-                    Text('   （需要先有权限才能检查）'),
-                    Text('5. 输入消息内容并点击"发送消息"向快应用发送数据'),
-                    Text('6. 点击"开始监听"接收来自穿戴设备的消息'),
-                    Text('7. 目标快应用包名: com.application.zaona.weather'),
-                  ],
+                  ),
                 ),
-              ),
+                
+                const SizedBox(height: 16),
+              ],
             ),
-          ],
+          ),
         ),
       ),
-      ),
+    );
+  }
+
+  Widget _buildInfoItem(String text, ColorScheme colorScheme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.circle,
+          size: 6,
+          color: colorScheme.secondary,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: colorScheme.onSecondaryContainer,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -53,7 +53,7 @@ class WearableService {
     }
   }
 
-  /// 检查小米穿戴应用是否安装
+  /// 检查小米运动健康应用是否安装
   static Future<String> checkWearableApp() async {
     try {
       final String result = await _channel.invokeMethod('checkWearableApp');
@@ -73,6 +73,16 @@ class WearableService {
     }
   }
 
+  /// 启动穿戴设备端快应用
+  static Future<String> launchWearApp() async {
+    try {
+      final String result = await _channel.invokeMethod('launchWearApp');
+      return result;
+    } on PlatformException catch (e) {
+      throw Exception('启动快应用失败: ${e.message}');
+    }
+  }
+
   /// 设置消息接收回调
   static void setMessageCallback(Function(String) callback) {
     _channel.setMethodCallHandler((call) async {
@@ -80,5 +90,65 @@ class WearableService {
         callback(call.arguments as String);
       }
     });
+  }
+
+  /// 一键连接结果
+  static Map<String, dynamic>? _lastConnectionResult;
+  
+  static Map<String, dynamic>? get lastConnectionResult => _lastConnectionResult;
+
+  /// 一键连接 - 整合所有连接步骤
+  static Future<Map<String, dynamic>> connectDevice() async {
+    String currentStep = '';
+    String errorMessage = '';
+    String deviceId = '';
+    
+    try {
+      // 步骤1: 检查小米运动健康应用
+      currentStep = '检查小米运动健康应用';
+      await checkWearableApp();
+      
+      // 步骤2: 获取连接设备
+      currentStep = '获取连接设备';
+      final nodeResult = await getConnectedNodes();
+      // 从返回信息中提取设备ID
+      if (nodeResult.contains('ID=')) {
+        deviceId = nodeResult.split('ID=')[1].trim();
+      }
+      
+      // 步骤3: 申请权限
+      currentStep = '申请权限';
+      await requestPermissions();
+      
+      // 步骤4: 检查穿戴设备端快应用（可能失败，不影响流程）
+      currentStep = '检查穿戴设备端快应用';
+      try {
+        await checkWearApp();
+      } catch (e) {
+        // 快应用检查失败不影响连接成功
+      }
+      
+      _lastConnectionResult = {
+        'success': true,
+        'step': '连接完成',
+        'message': '设备连接成功',
+        'deviceId': deviceId,
+      };
+      return _lastConnectionResult!;
+    } catch (e) {
+      errorMessage = e.toString();
+      // 移除 "Exception: " 前缀
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+      
+      _lastConnectionResult = {
+        'success': false,
+        'step': currentStep,
+        'message': errorMessage,
+        'deviceId': '',
+      };
+      return _lastConnectionResult!;
+    }
   }
 }

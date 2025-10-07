@@ -11,7 +11,7 @@ public class MainActivity extends FlutterActivity {
     public void configureFlutterEngine(FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         
-        // 注册小米穿戴通信插件
+        // 注册小米运动健康通信插件
         WearableMessageHandler wearableHandler = new WearableMessageHandler();
         flutterEngine.getPlugins().add(wearableHandler);
     }
