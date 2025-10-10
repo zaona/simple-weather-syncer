@@ -106,8 +106,8 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                         Log.d(TAG, "获取设备列表成功，设备数量: " + nodes.size());
                         if (nodes.size() > 0) {
                             currentNode = nodes.get(0);
-                            Log.d(TAG, "找到连接的设备: ID=" + currentNode.id);
-                            result.success("设备连接成功: ID=" + currentNode.id);
+                            Log.d(TAG, "找到连接的设备: ID=" + currentNode.id + ", Name=" + currentNode.name);
+                            result.success("设备连接成功: Name=" + currentNode.name + ", ID=" + currentNode.id);
                         } else {
                             Log.w(TAG, "没有找到连接的设备");
                             result.error("NO_DEVICE", "没有找到连接的穿戴设备\n\n请确保：\n1. 穿戴设备已与手机配对\n2. 小米运动健康已安装\n3. 设备处于连接状态", null);

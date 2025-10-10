@@ -66,6 +66,7 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   bool _isConnecting = false;
   bool _isConnected = false;
   String _deviceId = '';
+  String _deviceName = '';
 
   @override
   void initState() {
@@ -116,6 +117,7 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
           setState(() {
             _isConnected = true;
             _deviceId = result['deviceId'] ?? '';
+            _deviceName = result['deviceName'] ?? '';
           });
           
           // 显示SnackBar
@@ -131,6 +133,7 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
           setState(() {
             _isConnected = false;
             _deviceId = '';
+            _deviceName = '';
           });
           
           // 显示详细的错误对话框
@@ -290,13 +293,23 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        _deviceId,
+                                        _deviceName.isNotEmpty ? _deviceName : _deviceId,
                                         style: TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.bold,
                                           color: colorScheme.onPrimaryContainer,
                                         ),
                                       ),
+                                      if (_deviceName.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _deviceId,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),

@@ -102,6 +102,7 @@ class WearableService {
     String currentStep = '';
     String errorMessage = '';
     String deviceId = '';
+    String deviceName = '';
     
     try {
       // 步骤1: 检查小米运动健康应用
@@ -111,9 +112,18 @@ class WearableService {
       // 步骤2: 获取连接设备
       currentStep = '获取连接设备';
       final nodeResult = await getConnectedNodes();
-      // 从返回信息中提取设备ID
-      if (nodeResult.contains('ID=')) {
-        deviceId = nodeResult.split('ID=')[1].trim();
+      // 从返回信息中提取设备名称和ID
+      // 格式: "设备连接成功: Name=设备名称, ID=设备ID"
+      if (nodeResult.contains('Name=') && nodeResult.contains('ID=')) {
+        final parts = nodeResult.split(',');
+        for (var part in parts) {
+          part = part.trim();
+          if (part.contains('Name=')) {
+            deviceName = part.split('Name=')[1].trim();
+          } else if (part.contains('ID=')) {
+            deviceId = part.split('ID=')[1].trim();
+          }
+        }
       }
       
       // 步骤3: 申请权限
@@ -133,6 +143,7 @@ class WearableService {
         'step': '连接完成',
         'message': '设备连接成功',
         'deviceId': deviceId,
+        'deviceName': deviceName,
       };
       return _lastConnectionResult!;
     } catch (e) {
@@ -147,6 +158,7 @@ class WearableService {
         'step': currentStep,
         'message': errorMessage,
         'deviceId': '',
+        'deviceName': '',
       };
       return _lastConnectionResult!;
     }
