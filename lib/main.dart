@@ -3,6 +3,7 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'wearable_service.dart';
 import 'weather_page.dart';
+import 'sdk_test_page.dart';
 
 Future<void> main() async {
   // 加载环境变量
@@ -233,23 +234,40 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                   padding: const EdgeInsets.only(bottom: 20.0, top: 8.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        '简明天气同步器',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '简明天气同步器',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            Text(
+                              'v1.2.0',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        'v1.2.0',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                      IconButton(
+                        icon: const Icon(Icons.developer_mode),
+                        tooltip: 'SDK 功能测试',
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const SdkTestPage(),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),

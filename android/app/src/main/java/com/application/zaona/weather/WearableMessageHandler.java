@@ -1,6 +1,8 @@
 package com.application.zaona.weather;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -34,12 +36,16 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
     private AuthApi authApi;
     private Node currentNode;
     private OnMessageReceivedListener messageListener;
+    private Handler mainHandler;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         context = flutterPluginBinding.getApplicationContext();
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), CHANNEL);
         channel.setMethodCallHandler(this);
+        
+        // 初始化主线程Handler
+        mainHandler = new Handler(Looper.getMainLooper());
         
         // 初始化小米运动健康SDK API
         nodeApi = Wearable.getNodeApi(context);
@@ -50,10 +56,16 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
         messageListener = new OnMessageReceivedListener() {
             @Override
             public void onMessageReceived(@NonNull String nodeId, @NonNull byte[] message) {
-                String messageStr = new String(message);
+                final String messageStr = new String(message);
                 Log.d(TAG, "收到来自设备的消息: " + messageStr);
-                // 将消息发送到Flutter端
-                channel.invokeMethod("onMessageReceived", messageStr);
+                // 在主线程中将消息发送到Flutter端
+                mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        channel.invokeMethod("onMessageReceived", messageStr);
+                        Log.d(TAG, "已将消息发送到Flutter端");
+                    }
+                });
             }
         };
     }
@@ -188,12 +200,13 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
             return;
         }
         
+        Log.d(TAG, "开始监听消息，设备ID: " + currentNode.id);
         messageApi.addListener(currentNode.id, messageListener)
                 .addOnSuccessListener(new OnSuccessListener<Void>() {
                     @Override
                     public void onSuccess(Void aVoid) {
-                        Log.d(TAG, "开始监听消息");
-                        result.success("✓ 开始监听消息");
+                        Log.d(TAG, "消息监听器注册成功，设备ID: " + currentNode.id);
+                        result.success("✓ 开始监听消息，设备ID: " + currentNode.id);
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
@@ -211,11 +224,12 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
             return;
         }
         
+        Log.d(TAG, "停止监听消息，设备ID: " + currentNode.id);
         messageApi.removeListener(currentNode.id)
                 .addOnSuccessListener(new OnSuccessListener<Void>() {
                     @Override
                     public void onSuccess(Void aVoid) {
-                        Log.d(TAG, "停止监听消息");
+                        Log.d(TAG, "消息监听器移除成功，设备ID: " + currentNode.id);
                         result.success("✓ 停止监听消息");
                     }
                 })
