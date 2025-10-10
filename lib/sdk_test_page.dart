@@ -10,6 +10,8 @@ class SdkTestPage extends StatefulWidget {
 
 class _SdkTestPageState extends State<SdkTestPage> {
   final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _notifyTitleController = TextEditingController();
+  final TextEditingController _notifyMessageController = TextEditingController();
   final List<String> _receivedMessages = [];
   final ScrollController _scrollController = ScrollController();
   
@@ -28,6 +30,8 @@ class _SdkTestPageState extends State<SdkTestPage> {
   @override
   void dispose() {
     _messageController.dispose();
+    _notifyTitleController.dispose();
+    _notifyMessageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -127,6 +131,25 @@ class _SdkTestPageState extends State<SdkTestPage> {
 
     await _executeAction('发送消息', () => WearableService.sendMessage(message));
     _messageController.clear();
+  }
+
+  Future<void> _sendNotification() async {
+    final title = _notifyTitleController.text.trim();
+    final message = _notifyMessageController.text.trim();
+    
+    if (title.isEmpty) {
+      _setStatus('请输入通知标题', isError: true);
+      return;
+    }
+    
+    if (message.isEmpty) {
+      _setStatus('请输入通知内容', isError: true);
+      return;
+    }
+
+    await _executeAction('发送通知', () => WearableService.sendNotification(title, message));
+    _notifyTitleController.clear();
+    _notifyMessageController.clear();
   }
 
   Widget _buildActionButton({
@@ -358,6 +381,49 @@ class _SdkTestPageState extends State<SdkTestPage> {
                           label: '发送消息',
                           icon: Icons.send,
                           onPressed: _sendMessage,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // 通知发送
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '通知发送',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _notifyTitleController,
+                          decoration: const InputDecoration(
+                            labelText: '通知标题',
+                            border: UnderlineInputBorder(),
+                            prefixIcon: Icon(Icons.title),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _notifyMessageController,
+                          decoration: const InputDecoration(
+                            labelText: '通知内容',
+                            border: UnderlineInputBorder(),
+                            prefixIcon: Icon(Icons.notifications),
+                          ),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildActionButton(
+                          label: '发送通知',
+                          icon: Icons.notifications_active,
+                          onPressed: _sendNotification,
                         ),
                       ],
                     ),

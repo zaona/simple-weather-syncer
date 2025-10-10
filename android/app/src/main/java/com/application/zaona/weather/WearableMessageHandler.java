@@ -14,6 +14,8 @@ import com.xiaomi.xms.wearable.message.MessageApi;
 import com.xiaomi.xms.wearable.message.OnMessageReceivedListener;
 import com.xiaomi.xms.wearable.node.Node;
 import com.xiaomi.xms.wearable.node.NodeApi;
+import com.xiaomi.xms.wearable.notify.NotifyApi;
+import com.xiaomi.xms.wearable.Status;
 import com.xiaomi.xms.wearable.tasks.OnSuccessListener;
 import com.xiaomi.xms.wearable.tasks.OnFailureListener;
 
@@ -34,6 +36,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
     private NodeApi nodeApi;
     private MessageApi messageApi;
     private AuthApi authApi;
+    private NotifyApi notifyApi;
     private Node currentNode;
     private OnMessageReceivedListener messageListener;
     private Handler mainHandler;
@@ -51,6 +54,7 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
         nodeApi = Wearable.getNodeApi(context);
         messageApi = Wearable.getMessageApi(context);
         authApi = Wearable.getAuthApi(context);
+        notifyApi = Wearable.getNotifyApi(context);
         
         // 初始化消息监听器
         messageListener = new OnMessageReceivedListener() {
@@ -82,6 +86,11 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
             case "sendMessage":
                 String message = call.argument("message");
                 sendMessage(message, result);
+                break;
+            case "sendNotification":
+                String title = call.argument("title");
+                String notifyMessage = call.argument("message");
+                sendNotification(title, notifyMessage, result);
                 break;
             case "startListening":
                 startListening(result);
@@ -190,6 +199,40 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                     public void onFailure(@NonNull Exception e) {
                         Log.e(TAG, "消息发送失败: " + e.getMessage());
                         result.error("MESSAGE_ERROR", "消息发送失败\n\n" + e.getMessage(), null);
+                    }
+                });
+    }
+
+    private void sendNotification(String title, String message, Result result) {
+        if (notifyApi == null || currentNode == null) {
+            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
+            return;
+        }
+        
+        if (title == null || title.isEmpty()) {
+            result.error("INVALID_PARAMS", "标题不能为空", null);
+            return;
+        }
+        
+        if (message == null || message.isEmpty()) {
+            result.error("INVALID_PARAMS", "消息内容不能为空", null);
+            return;
+        }
+        
+        Log.d(TAG, "发送通知 - 标题: " + title + ", 内容: " + message);
+        notifyApi.sendNotify(currentNode.id, title, message)
+                .addOnSuccessListener(new OnSuccessListener<Status>() {
+                    @Override
+                    public void onSuccess(Status status) {
+                        Log.d(TAG, "通知发送成功，状态: " + status);
+                        result.success("✓ 通知发送成功");
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.e(TAG, "通知发送失败: " + e.getMessage());
+                        result.error("NOTIFY_ERROR", "通知发送失败\n\n" + e.getMessage(), null);
                     }
                 });
     }

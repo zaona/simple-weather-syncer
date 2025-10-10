@@ -33,6 +33,19 @@ class WearableService {
     }
   }
 
+  /// 发送通知到穿戴设备
+  static Future<String> sendNotification(String title, String message) async {
+    try {
+      final String result = await _channel.invokeMethod('sendNotification', {
+        'title': title,
+        'message': message,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      throw Exception('通知发送失败: ${e.message}');
+    }
+  }
+
   /// 开始监听消息
   static Future<String> startListening() async {
     try {
