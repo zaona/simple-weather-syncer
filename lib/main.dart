@@ -68,6 +68,10 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   bool _isConnected = false;
   String _deviceId = '';
   String _deviceName = '';
+  
+  // 开发者模式相关
+  int _versionTapCount = 0;
+  DateTime? _lastTapTime;
 
   @override
   void initState() {
@@ -147,6 +151,63 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
           _isConnecting = false;
         });
       }
+    }
+  }
+
+  /// 处理版本号点击 - 开发者模式入口
+  void _onVersionTap() {
+    final now = DateTime.now();
+    
+    // 如果距离上次点击超过2秒，重置计数
+    if (_lastTapTime != null && now.difference(_lastTapTime!) > const Duration(seconds: 2)) {
+      _versionTapCount = 0;
+    }
+    
+    setState(() {
+      _versionTapCount++;
+      _lastTapTime = now;
+    });
+    
+    // 需要连续点击7次
+    const requiredTaps = 7;
+    final remaining = requiredTaps - _versionTapCount;
+    
+    if (_versionTapCount >= requiredTaps) {
+      // 重置计数
+      setState(() {
+        _versionTapCount = 0;
+        _lastTapTime = null;
+      });
+      
+      // 显示成功提示并打开SDK测试页面
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('🔓 开发者模式已激活'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+      
+      // 短暂延迟后打开页面
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const SdkTestPage(),
+            ),
+          );
+        }
+      });
+    } else if (_versionTapCount >= 3) {
+      // 点击3次后开始显示提示
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('再点击 $remaining 次进入开发者模式'),
+          duration: const Duration(milliseconds: 800),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -232,42 +293,26 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 // 标题栏
                 Padding(
                   padding: const EdgeInsets.only(bottom: 20.0, top: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '简明天气同步器',
-                              style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            Text(
-                              'v1.2.0',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
+                      Text(
+                        '简明天气同步器',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.developer_mode),
-                        tooltip: 'SDK 功能测试',
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const SdkTestPage(),
-                            ),
-                          );
-                        },
+                      GestureDetector(
+                        onTap: _onVersionTap,
+                        child: Text(
+                          'v1.2.0',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                     ],
                   ),
