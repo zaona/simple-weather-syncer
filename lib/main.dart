@@ -4,6 +4,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'wearable_service.dart';
 import 'weather_page.dart';
 import 'sdk_test_page.dart';
+import 'update_service.dart';
+import 'update_dialog.dart';
 
 Future<void> main() async {
   // 加载环境变量
@@ -72,6 +74,9 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   // 开发者模式相关
   int _versionTapCount = 0;
   DateTime? _lastTapTime;
+  
+  // 应用版本信息
+  String _appVersion = 'v...'; // 默认显示加载中
 
   @override
   void initState() {
@@ -83,8 +88,119 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
       });
     });
     
+    // 获取应用版本信息
+    _loadAppVersion();
+    
     // 自动启动连接和监听
     _autoConnect();
+    
+    // 检查应用更新（显示网络错误提示，但不显示无更新提示）
+    _checkForUpdate(showError: true);
+  }
+
+  /// 加载应用版本信息
+  Future<void> _loadAppVersion() async {
+    final version = await UpdateService.getVersionName();
+    if (mounted) {
+      setState(() {
+        _appVersion = 'v$version';
+      });
+    }
+  }
+
+  /// 统一的更新检查方法
+  /// [showLoading] 是否显示加载提示
+  /// [showError] 是否显示网络错误提示
+  /// [showNoUpdate] 是否显示无更新提示
+  Future<void> _checkForUpdate({
+    bool showLoading = false,
+    bool showError = false,
+    bool showNoUpdate = false,
+  }) async {
+    if (!mounted) return;
+    
+    // 显示加载提示
+    if (showLoading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('正在检查更新...'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    final result = await UpdateService.checkForUpdateManually();
+    
+    if (!mounted) return;
+    
+    // 清除加载提示
+    if (showLoading) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+    }
+    
+    // 处理检查结果
+    if (result.checkFailed) {
+      // 检查失败 - 网络错误
+      if (showError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.wifi_off, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(result.errorMessage ?? '网络连接失败'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: '重试',
+              textColor: Colors.white,
+              onPressed: () => _checkForUpdate(
+                showLoading: showLoading,
+                showError: showError,
+                showNoUpdate: showNoUpdate,
+              ),
+            ),
+          ),
+        );
+      }
+    } else if (result.hasUpdate && result.updateInfo != null) {
+      // 有新版本，显示强制更新弹窗
+      showForceUpdateDialog(context, result.updateInfo!);
+    } else {
+      // 已是最新版本
+      if (showNoUpdate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Text('已是最新版本'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   /// 自动连接设备
@@ -267,6 +383,7 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -293,26 +410,44 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 // 标题栏
                 Padding(
                   padding: const EdgeInsets.only(bottom: 20.0, top: 8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        '简明天气同步器',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '简明天气同步器',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: _onVersionTap,
+                              child: Text(
+                                _appVersion,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      GestureDetector(
-                        onTap: _onVersionTap,
-                        child: Text(
-                          'v1.2.0',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                      // 手动检查更新按钮
+                      IconButton(
+                        onPressed: () => _checkForUpdate(
+                          showLoading: true,
+                          showError: true,
+                          showNoUpdate: true,
                         ),
+                        icon: const Icon(Icons.system_update),
+                        tooltip: '检查更新',
+                        iconSize: 26,
+                        color: colorScheme.primary,
                       ),
                     ],
                   ),
