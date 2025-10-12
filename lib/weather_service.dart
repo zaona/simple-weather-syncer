@@ -23,7 +23,9 @@ class WeatherService {
   static String get weatherApiBaseUrl => 'https://$apiHost/v7/weather';
   
   static const String recentSearchesKey = 'weather_recent_searches';
+  static const String recentLocationsKey = 'weather_recent_locations';
   static const int maxRecentSearches = 10;
+  static const int maxRecentLocations = 5;
 
   /// 搜索城市
   static Future<List<CityLocation>> searchLocation(String cityName) async {
@@ -238,6 +240,60 @@ class WeatherService {
     await saveRecentSearches(currentSearches);
 
     return currentSearches;
+  }
+
+  /// 加载最近定位的位置
+  static Future<List<CityLocation>> loadRecentLocations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? savedData = prefs.getString(recentLocationsKey);
+      
+      if (savedData != null && savedData.isNotEmpty) {
+        final List<dynamic> jsonList = json.decode(savedData);
+        return jsonList.map((item) => CityLocation.fromJson(item)).toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// 保存最近定位的位置
+  static Future<void> saveRecentLocations(List<CityLocation> locations) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = locations.map((loc) => loc.toJson()).toList();
+      await prefs.setString(recentLocationsKey, json.encode(jsonList));
+    } catch (e) {
+      // 保存失败不影响主流程
+    }
+  }
+
+  /// 添加到定位历史
+  static Future<List<CityLocation>> addToRecentLocations(
+    CityLocation location,
+    List<CityLocation> currentLocations,
+  ) async {
+    // 检查是否已存在
+    final existingIndex = currentLocations.indexWhere((item) => item.id == location.id);
+    
+    if (existingIndex != -1) {
+      // 如果已存在，移到最前面
+      currentLocations.removeAt(existingIndex);
+    }
+
+    // 添加到最前面
+    currentLocations.insert(0, location);
+
+    // 限制最多保存5个位置
+    if (currentLocations.length > maxRecentLocations) {
+      currentLocations = currentLocations.sublist(0, maxRecentLocations);
+    }
+
+    // 保存到本地
+    await saveRecentLocations(currentLocations);
+
+    return currentLocations;
   }
 }
 

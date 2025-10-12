@@ -12,8 +12,9 @@ class WeatherPage extends StatefulWidget {
   State<WeatherPage> createState() => _WeatherPageState();
 }
 
-class _WeatherPageState extends State<WeatherPage> {
+class _WeatherPageState extends State<WeatherPage> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  late TabController _tabController;
   
   bool _isLoading = false;
   bool _isLocating = false;
@@ -21,6 +22,7 @@ class _WeatherPageState extends State<WeatherPage> {
   
   List<CityLocation> _locations = [];
   List<CityLocation> _recentSearches = [];
+  List<CityLocation> _recentLocations = []; // 最近定位的位置
   
   CityLocation? _selectedLocation;
   String _selectedForecastDays = '7d';
@@ -34,11 +36,14 @@ class _WeatherPageState extends State<WeatherPage> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadRecentSearches();
+    _loadRecentLocations();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -48,6 +53,14 @@ class _WeatherPageState extends State<WeatherPage> {
     final searches = await WeatherService.loadRecentSearches();
     setState(() {
       _recentSearches = searches;
+    });
+  }
+
+  /// 加载最近定位的位置
+  Future<void> _loadRecentLocations() async {
+    final locations = await WeatherService.loadRecentLocations();
+    setState(() {
+      _recentLocations = locations;
     });
   }
 
@@ -93,6 +106,7 @@ class _WeatherPageState extends State<WeatherPage> {
   Future<void> _selectLocation(CityLocation location) async {
     setState(() {
       _selectedLocation = location;
+      _isFromLocation = false; // 通过搜索选择的城市
     });
 
     // 添加到历史搜索
@@ -114,6 +128,7 @@ class _WeatherPageState extends State<WeatherPage> {
     setState(() {
       _selectedLocation = city;
       _locations = [city];
+      _isFromLocation = false; // 通过历史记录选择的城市
     });
     await _fetchWeather();
   }
@@ -201,7 +216,17 @@ class _WeatherPageState extends State<WeatherPage> {
         _isLocating = false;
       });
 
-      // 步骤4：自动获取天气数据（统一使用LocationID）
+      // 步骤4：添加到定位历史
+      final updatedLocations = await WeatherService.addToRecentLocations(
+        cityInfo,
+        List.from(_recentLocations),
+      );
+      
+      setState(() {
+        _recentLocations = updatedLocations;
+      });
+
+      // 步骤5：自动获取天气数据（统一使用LocationID）
       await _fetchWeather();
       
       if (mounted) {
@@ -371,246 +396,263 @@ class _WeatherPageState extends State<WeatherPage> {
       appBar: AppBar(
         title: const Text('天气查询'),
         backgroundColor: colorScheme.surface,
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.my_location), text: '定位'),
+            Tab(icon: Icon(Icons.search), text: '搜索'),
+          ],
+        ),
       ),
       backgroundColor: colorScheme.surface,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 提示信息
-                _buildInfoCard(colorScheme),
-                
-                const SizedBox(height: 16),
-
-                // 搜索卡片
-                _buildSearchCard(colorScheme),
-
-                // 历史搜索
-                if (_recentSearches.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _buildRecentSearches(colorScheme),
-                ],
-
-                // 地区选择
-                if (_locations.length > 1) ...[
-                  const SizedBox(height: 16),
-                  _buildLocationSelector(colorScheme),
-                ],
-
-                // 预报天数选择
-                if (_selectedLocation != null) ...[
-                  const SizedBox(height: 16),
-                  _buildForecastDaysSelector(colorScheme),
-                ],
-
-                // 天气数据展示
-                if (_weatherData != null) ...[
-                  const SizedBox(height: 16),
-                  _buildWeatherDataCard(colorScheme),
-                ],
-
-                // 错误信息
-                if (_errorMessage.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _buildErrorCard(colorScheme),
-                ],
-              ],
-            ),
-          ),
-        ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // 定位Tab
+          _buildLocationTab(colorScheme),
+          // 搜索Tab
+          _buildSearchTab(colorScheme),
+        ],
       ),
     );
   }
 
-  /// 提示信息卡片
-  Widget _buildInfoCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.secondaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info_outline, color: colorScheme.secondary, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  '使用说明',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSecondaryContainer,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _buildInfoItem('可以使用当前位置自动定位', colorScheme),
-            const SizedBox(height: 4),
-            _buildInfoItem('也可以输入城市名称查询天气信息', colorScheme),
-            const SizedBox(height: 4),
-            _buildInfoItem('可以直接发送到已连接的手表', colorScheme),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoItem(String text, ColorScheme colorScheme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.circle, size: 6, color: colorScheme.secondary),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: colorScheme.onSecondaryContainer,
-              fontSize: 13,
-              height: 1.4,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 搜索卡片
-  Widget _buildSearchCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(0.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '天气查询',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // 定位按钮
-            FilledButton.tonalIcon(
-              onPressed: (_isLoading || _isLocating) ? null : _useCurrentLocation,
-              icon: _isLocating
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.onSecondaryContainer,
-                      ),
-                    )
-                  : const Icon(Icons.my_location),
-              label: Text(_isLocating ? '定位中...' : '使用当前位置'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // 分隔线
-            Row(
-              children: [
-                Expanded(child: Divider(color: colorScheme.outline)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    '或',
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 12,
+  /// 定位Tab
+  Widget _buildLocationTab(ColorScheme colorScheme) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 定位按钮
+          FilledButton.tonalIcon(
+            onPressed: (_isLoading || _isLocating) ? null : _useCurrentLocation,
+            icon: _isLocating
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colorScheme.onSecondaryContainer,
                     ),
-                  ),
-                ),
-                Expanded(child: Divider(color: colorScheme.outline)),
-              ],
+                  )
+                : const Icon(Icons.my_location, size: 24),
+            label: Text(_isLocating ? '定位中...' : '使用当前位置'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              textStyle: const TextStyle(fontSize: 16),
             ),
-            
-            const SizedBox(height: 16),
-            
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: '请输入城市名称，例如：北京',
-                border: const OutlineInputBorder(),
-                filled: true,
-                fillColor: colorScheme.surfaceContainerLow,
-                prefixIcon: const Icon(Icons.search),
-              ),
-              onSubmitted: (_) => _searchLocation(),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: (_isLoading || _isLocating) ? null : _searchLocation,
-              icon: _isLoading
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Icon(Icons.search),
-              label: Text(_isLoading ? '查询中...' : '查询'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
+          ),
+
+          // 最近定位的位置
+          if (_recentLocations.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _buildRecentLocations(colorScheme),
           ],
-        ),
+
+          // 预报天数选择
+          if (_selectedLocation != null && _isFromLocation) ...[
+            const SizedBox(height: 20),
+            _buildForecastDaysSelector(colorScheme),
+          ],
+
+          // 天气数据展示
+          if (_weatherData != null && _isFromLocation) ...[
+            const SizedBox(height: 16),
+            _buildWeatherDataCard(colorScheme),
+          ],
+
+          // 错误信息
+          if (_errorMessage.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildErrorCard(colorScheme),
+          ],
+        ],
       ),
     );
   }
 
-  /// 历史搜索
+  /// 搜索Tab
+  Widget _buildSearchTab(ColorScheme colorScheme) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 搜索框
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: '请输入城市名称，例如：北京',
+              border: const OutlineInputBorder(),
+              filled: true,
+              fillColor: colorScheme.surfaceContainerLow,
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          _searchController.clear();
+                        });
+                      },
+                    )
+                  : null,
+            ),
+            onSubmitted: (_) => _searchLocation(),
+            onChanged: (value) => setState(() {}),
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // 搜索按钮
+          FilledButton.icon(
+            onPressed: (_isLoading || _isLocating) ? null : _searchLocation,
+            icon: _isLoading
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colorScheme.onPrimary,
+                    ),
+                  )
+                : const Icon(Icons.search, size: 24),
+            label: Text(_isLoading ? '查询中...' : '查询天气'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              textStyle: const TextStyle(fontSize: 16),
+            ),
+          ),
+
+          // 历史搜索
+          if (_recentSearches.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            _buildRecentSearches(colorScheme),
+          ],
+
+          // 地区选择
+          if (_locations.length > 1) ...[
+            const SizedBox(height: 16),
+            _buildLocationSelector(colorScheme),
+          ],
+
+          // 预报天数选择
+          if (_selectedLocation != null && !_isFromLocation) ...[
+            const SizedBox(height: 20),
+            _buildForecastDaysSelector(colorScheme),
+          ],
+
+          // 天气数据展示
+          if (_weatherData != null && !_isFromLocation) ...[
+            const SizedBox(height: 16),
+            _buildWeatherDataCard(colorScheme),
+          ],
+
+          // 错误信息
+          if (_errorMessage.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildErrorCard(colorScheme),
+          ],
+        ],
+      ),
+    );
+  }
+
+
+  /// 历史搜索（优化：使用Chip）
   Widget _buildRecentSearches(ColorScheme colorScheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            '历史搜索',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurfaceVariant,
+        Row(
+          children: [
+            Icon(Icons.history, size: 18, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              '最近搜索',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
+          ],
         ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: _recentSearches.map((city) {
-            return OutlinedButton(
-              onPressed: () => _selectRecentCity(city),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          children: _recentSearches.take(5).map((city) {
+            return ActionChip(
+              avatar: Icon(
+                Icons.location_city,
+                size: 18,
+                color: colorScheme.primary,
               ),
-              child: Text(
-                '${city.name} (${city.adm1} - ${city.adm2})',
+              label: Text(
+                city.name,
                 style: const TextStyle(fontSize: 13),
               ),
+              onPressed: () => _selectRecentCity(city),
+              backgroundColor: colorScheme.surfaceContainerHighest,
             );
           }).toList(),
         ),
       ],
     );
+  }
+
+  /// 最近定位的位置
+  Widget _buildRecentLocations(ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.location_on, size: 18, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              '最近定位',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _recentLocations.map((city) {
+            return ActionChip(
+              avatar: Icon(
+                Icons.my_location,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+              label: Text(
+                city.name,
+                style: const TextStyle(fontSize: 13),
+              ),
+              onPressed: () => _selectRecentLocation(city),
+              backgroundColor: colorScheme.surfaceContainerHighest,
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// 选择最近定位的城市
+  Future<void> _selectRecentLocation(CityLocation city) async {
+    setState(() {
+      _selectedLocation = city;
+      _isFromLocation = true; // 标记为定位获得
+    });
+    await _fetchWeather();
   }
 
   /// 地区选择器
@@ -663,63 +705,53 @@ class _WeatherPageState extends State<WeatherPage> {
     );
   }
 
-  /// 预报天数选择器
+  /// 预报天数选择器（优化：使用SegmentedButton）
   Widget _buildForecastDaysSelector(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(0.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
+            Icon(Icons.calendar_month, size: 18, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
             Text(
-              '请选择预报天数',
+              '预报天数',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: colorScheme.outline),
-                borderRadius: BorderRadius.circular(4),
-                color: colorScheme.surfaceContainerLow,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: DropdownButton<String>(
-                isExpanded: true,
-                underline: const SizedBox(),
-                value: _selectedForecastDays,
-                items: const [
-                  DropdownMenuItem(value: '3d', child: Text('3天预报')),
-                  DropdownMenuItem(value: '7d', child: Text('7天预报')),
-                  DropdownMenuItem(value: '10d', child: Text('10天预报')),
-                  DropdownMenuItem(value: '15d', child: Text('15天预报')),
-                  DropdownMenuItem(value: '30d', child: Text('30天预报')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      _selectedForecastDays = value;
-                    });
-                    // 如果已选择城市（包括定位获得的），则重新获取天气
-                    if (_selectedLocation != null) {
-                      _fetchWeather();
-                    }
-                  }
-                },
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: '3d', label: Text('3天')),
+              ButtonSegment(value: '7d', label: Text('7天')),
+              ButtonSegment(value: '10d', label: Text('10天')),
+              ButtonSegment(value: '15d', label: Text('15天')),
+              ButtonSegment(value: '30d', label: Text('30天')),
+            ],
+            selected: {_selectedForecastDays},
+            onSelectionChanged: (Set<String> newSelection) {
+              setState(() {
+                _selectedForecastDays = newSelection.first;
+              });
+              // 如果已选择城市（包括定位获得的），则重新获取天气
+              if (_selectedLocation != null) {
+                _fetchWeather();
+              }
+            },
+          ),
+        ),
+      ],
     );
   }
 
-  /// 天气数据卡片
+  /// 天气数据卡片（简化版：专注于发送功能）
   Widget _buildWeatherDataCard(ColorScheme colorScheme) {
     if (_selectedLocation == null) return const SizedBox.shrink();
     
@@ -731,83 +763,107 @@ class _WeatherPageState extends State<WeatherPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 城市信息标题
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // 如果是定位获得的，显示定位图标
+                if (_isFromLocation) ...[
+                  Icon(
+                    Icons.my_location,
+                    size: 20,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          // 如果是定位获得的，显示定位图标
-                          if (_isFromLocation) ...[
-                            Icon(
-                              Icons.my_location,
-                              size: 18,
-                              color: colorScheme.onPrimaryContainer,
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                          Expanded(
-                            child: Text(
-                              '${_selectedLocation!.name} 天气信息',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        _selectedLocation!.name,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onPrimaryContainer,
+                        ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         '${_selectedLocation!.adm2}, ${_selectedLocation!.adm1}',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
+                          fontSize: 13,
+                          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
                         ),
                       ),
                     ],
                   ),
                 ),
+                // 成功图标
+                Icon(
+                  Icons.check_circle,
+                  color: colorScheme.primary,
+                  size: 32,
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _sendToWatch,
-              icon: const Icon(Icons.send),
-              label: const Text('发送到手表'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _copyWeatherData,
-              icon: Icon(_copied ? Icons.check : Icons.copy),
-              label: Text(_copied ? '已复制' : '复制数据'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-            const SizedBox(height: 12),
+            
+            const SizedBox(height: 16),
+            
+            // 天气预报说明
             Container(
-              constraints: const BoxConstraints(maxHeight: 300),
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               decoration: BoxDecoration(
-                color: colorScheme.surface,
+                color: colorScheme.surface.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  _weatherData!.toJsonString(),
-                  style: TextStyle(
-                    color: colorScheme.onSurface,
-                    fontSize: 12,
-                    fontFamily: 'monospace',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.cloud,
+                    size: 16,
+                    color: colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
                   ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '已获取 $_selectedForecastDays 天气预报数据',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 发送到手表按钮（主要操作）
+            FilledButton.icon(
+              onPressed: _sendToWatch,
+              icon: const Icon(Icons.watch, size: 22),
+              label: const Text('发送到手表'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+            
+            const SizedBox(height: 10),
+            
+            // 复制数据按钮（次要操作）
+            OutlinedButton.icon(
+              onPressed: _copyWeatherData,
+              icon: Icon(
+                _copied ? Icons.check_circle : Icons.copy,
+                size: 20,
+              ),
+              label: Text(_copied ? '已复制到剪贴板' : '复制天气数据'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(
+                  color: _copied ? colorScheme.primary : colorScheme.outline,
+                  width: _copied ? 2 : 1,
                 ),
               ),
             ),
