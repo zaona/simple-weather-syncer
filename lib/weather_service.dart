@@ -24,6 +24,8 @@ class WeatherService {
   
   static const String recentSearchesKey = 'weather_recent_searches';
   static const String recentLocationsKey = 'weather_recent_locations';
+  static const String savedLocationKey = 'weather_saved_location';
+  static const String savedForecastDaysKey = 'weather_saved_forecast_days';
   static const int maxRecentSearches = 10;
   static const int maxRecentLocations = 5;
 
@@ -294,6 +296,70 @@ class WeatherService {
     await saveRecentLocations(currentLocations);
 
     return currentLocations;
+  }
+
+  /// 保存选中的位置配置
+  static Future<void> saveSelectedLocation(CityLocation location, bool isFromLocation) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final locationData = {
+        ...location.toJson(),
+        'isFromLocation': isFromLocation,
+      };
+      await prefs.setString(savedLocationKey, json.encode(locationData));
+    } catch (e) {
+      // 保存失败不影响主流程
+    }
+  }
+
+  /// 读取选中的位置配置
+  static Future<Map<String, dynamic>?> loadSelectedLocation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? savedData = prefs.getString(savedLocationKey);
+      
+      if (savedData != null && savedData.isNotEmpty) {
+        final Map<String, dynamic> data = json.decode(savedData);
+        return {
+          'location': CityLocation.fromJson(data),
+          'isFromLocation': data['isFromLocation'] ?? false,
+        };
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 保存选中的预报天数
+  static Future<void> saveForecastDays(String days) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(savedForecastDaysKey, days);
+    } catch (e) {
+      // 保存失败不影响主流程
+    }
+  }
+
+  /// 读取选中的预报天数
+  static Future<String> loadForecastDays() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(savedForecastDaysKey) ?? '7d';
+    } catch (e) {
+      return '7d';
+    }
+  }
+
+  /// 清除所有配置
+  static Future<void> clearAllSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(savedLocationKey);
+      await prefs.remove(savedForecastDaysKey);
+    } catch (e) {
+      // 清除失败不影响主流程
+    }
   }
 }
 
