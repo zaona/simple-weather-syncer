@@ -74,13 +74,14 @@ class WeatherService {
   }
 
   /// 获取天气数据
-  static Future<WeatherData> fetchWeather(String locationId, String locationName, String days) async {
-    if (locationId.isEmpty) {
-      throw Exception('位置ID不能为空');
+  /// [location] 可以是 LocationID 或 经纬度（格式：经度,纬度）
+  static Future<WeatherData> fetchWeather(String location, String locationName, String days) async {
+    if (location.isEmpty) {
+      throw Exception('位置信息不能为空');
     }
 
     try {
-      final uri = Uri.parse('$weatherApiBaseUrl/$days?location=$locationId');
+      final uri = Uri.parse('$weatherApiBaseUrl/$days?location=$location');
       
       final response = await http.get(
         uri,
@@ -117,6 +118,72 @@ class WeatherService {
       }
       throw Exception('网络连接失败，请检查您的网络连接或稍后重试');
     }
+  }
+
+  /// 通过经纬度获取城市信息
+  /// [coordinates] 格式：经度,纬度（例如：116.41,39.92）
+  static Future<CityLocation?> getCityByCoordinates(String coordinates) async {
+    if (coordinates.isEmpty) {
+      throw Exception('经纬度信息不能为空');
+    }
+
+    try {
+      final uri = Uri.parse('$geoApiUrl?location=$coordinates');
+      
+      final response = await http.get(
+        uri,
+        headers: {
+          'X-QW-Api-Key': apiKey,
+          'Content-Type': 'application/json',
+          'X-Android-Package-Name': androidPackageName,
+          'X-Android-Cert': androidCertSha1,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (data['code'] == '200' && data['location'] != null && (data['location'] as List).isNotEmpty) {
+          // 返回第一个匹配的城市
+          return CityLocation.fromJson(data['location'][0]);
+        }
+      }
+      
+      // 如果查询失败，返回null，调用方可以使用默认名称
+      return null;
+    } catch (e) {
+      // 反向地理编码失败不影响主流程，返回null
+      return null;
+    }
+  }
+
+  /// 使用经纬度获取天气数据
+  /// [coordinates] 格式：经度,纬度（例如：116.41,39.92）
+  /// [cityName] 可选的城市名称，如果提供则使用，否则使用默认名称
+  static Future<WeatherData> fetchWeatherByCoordinates(
+    String coordinates, 
+    String days, 
+    {String? cityName}
+  ) async {
+    if (coordinates.isEmpty) {
+      throw Exception('经纬度信息不能为空');
+    }
+
+    // 验证经纬度格式
+    final parts = coordinates.split(',');
+    if (parts.length != 2) {
+      throw Exception('经纬度格式错误');
+    }
+
+    // 确定位置名称
+    String locationName;
+    if (cityName != null && cityName.isNotEmpty) {
+      locationName = cityName;
+    } else {
+      locationName = '当前位置 ($coordinates)';
+    }
+    
+    return fetchWeather(coordinates, locationName, days);
   }
 
   /// 加载历史搜索

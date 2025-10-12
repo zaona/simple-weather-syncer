@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'weather_service.dart';
 import 'weather_models.dart';
 import 'wearable_service.dart';
+import 'location_service.dart';
 
 class WeatherPage extends StatefulWidget {
   const WeatherPage({super.key});
@@ -15,6 +16,7 @@ class _WeatherPageState extends State<WeatherPage> {
   final TextEditingController _searchController = TextEditingController();
   
   bool _isLoading = false;
+  bool _isLocating = false;
   String _errorMessage = '';
   
   List<CityLocation> _locations = [];
@@ -25,6 +27,9 @@ class _WeatherPageState extends State<WeatherPage> {
   
   WeatherData? _weatherData;
   bool _copied = false;
+  
+  // 标记是否通过定位获得的位置（用于UI显示）
+  bool _isFromLocation = false;
 
   @override
   void initState() {
@@ -61,6 +66,7 @@ class _WeatherPageState extends State<WeatherPage> {
       _locations = [];
       _selectedLocation = null;
       _weatherData = null;
+      _isFromLocation = false; // 清除定位标志
     });
 
     try {
@@ -112,7 +118,7 @@ class _WeatherPageState extends State<WeatherPage> {
     await _fetchWeather();
   }
 
-  /// 获取天气数据
+  /// 获取天气数据（统一使用城市ID查询）
   Future<void> _fetchWeather() async {
     if (_selectedLocation == null) return;
 
@@ -124,6 +130,7 @@ class _WeatherPageState extends State<WeatherPage> {
     });
 
     try {
+      // 统一使用城市LocationID查询天气
       final weatherData = await WeatherService.fetchWeather(
         _selectedLocation!.id,
         _selectedLocation!.name,
@@ -140,6 +147,127 @@ class _WeatherPageState extends State<WeatherPage> {
         _isLoading = false;
       });
     }
+  }
+
+  /// 使用定位获取天气（整合方案：定位→反向地理编码→获取LocationID→查询天气）
+  Future<void> _useCurrentLocation() async {
+    setState(() {
+      _isLocating = true;
+      _errorMessage = '';
+      _weatherData = null;
+      _selectedLocation = null;
+      _locations = [];
+      _isFromLocation = false;
+    });
+
+    // 显示定位提示
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('正在定位并查询城市信息...'),
+            ],
+          ),
+          duration: const Duration(seconds: 20),
+        ),
+      );
+    }
+
+    try {
+      // 步骤1：获取GPS定位（经纬度）
+      final coordinates = await LocationService.getCurrentLocation();
+      
+      // 步骤2：通过反向地理编码获取城市信息（包含LocationID）
+      final cityInfo = await WeatherService.getCityByCoordinates(coordinates);
+      
+      if (cityInfo == null) {
+        throw Exception('无法获取该位置的城市信息，请尝试搜索城市名称');
+      }
+
+      // 步骤3：保存城市信息到_selectedLocation（统一数据模型）
+      setState(() {
+        _selectedLocation = cityInfo;
+        _isFromLocation = true; // 标记为定位获得
+        _isLocating = false;
+      });
+
+      // 步骤4：自动获取天气数据（统一使用LocationID）
+      await _fetchWeather();
+      
+      if (mounted) {
+        // 清除定位中的提示
+        ScaffoldMessenger.of(context).clearSnackBars();
+        
+        // 显示定位成功信息
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('定位成功: ${cityInfo.name} (${cityInfo.adm2}, ${cityInfo.adm1})'),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // 清除定位中的提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
+      
+      setState(() {
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        _isLocating = false;
+      });
+      
+      // 如果是权限问题，显示更友好的提示
+      if (e.toString().contains('永久拒绝')) {
+        _showPermissionDeniedDialog();
+      }
+    }
+  }
+
+  /// 显示权限被永久拒绝对话框
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.location_off, color: Theme.of(context).colorScheme.error, size: 28),
+              const SizedBox(width: 8),
+              const Text('需要位置权限'),
+            ],
+          ),
+          content: const Text(
+            '位置权限被永久拒绝，需要在系统设置中手动开启。\n\n'
+            '请在设置中找到本应用，开启位置权限后重试。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await LocationService.openAppSettings();
+              },
+              child: const Text('打开设置'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 复制天气数据
@@ -322,7 +450,9 @@ class _WeatherPageState extends State<WeatherPage> {
               ],
             ),
             const SizedBox(height: 10),
-            _buildInfoItem('输入城市名称查询天气信息', colorScheme),
+            _buildInfoItem('可以使用当前位置自动定位', colorScheme),
+            const SizedBox(height: 4),
+            _buildInfoItem('也可以输入城市名称查询天气信息', colorScheme),
             const SizedBox(height: 4),
             _buildInfoItem('可以直接发送到已连接的手表', colorScheme),
           ],
@@ -370,6 +500,48 @@ class _WeatherPageState extends State<WeatherPage> {
               ),
             ),
             const SizedBox(height: 12),
+            
+            // 定位按钮
+            FilledButton.tonalIcon(
+              onPressed: (_isLoading || _isLocating) ? null : _useCurrentLocation,
+              icon: _isLocating
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colorScheme.onSecondaryContainer,
+                      ),
+                    )
+                  : const Icon(Icons.my_location),
+              label: Text(_isLocating ? '定位中...' : '使用当前位置'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 分隔线
+            Row(
+              children: [
+                Expanded(child: Divider(color: colorScheme.outline)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    '或',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: colorScheme.outline)),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
             TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -383,7 +555,7 @@ class _WeatherPageState extends State<WeatherPage> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _isLoading ? null : _searchLocation,
+              onPressed: (_isLoading || _isLocating) ? null : _searchLocation,
               icon: _isLoading
                   ? SizedBox(
                       width: 18,
@@ -533,6 +705,7 @@ class _WeatherPageState extends State<WeatherPage> {
                     setState(() {
                       _selectedForecastDays = value;
                     });
+                    // 如果已选择城市（包括定位获得的），则重新获取天气
                     if (_selectedLocation != null) {
                       _fetchWeather();
                     }
@@ -548,6 +721,8 @@ class _WeatherPageState extends State<WeatherPage> {
 
   /// 天气数据卡片
   Widget _buildWeatherDataCard(ColorScheme colorScheme) {
+    if (_selectedLocation == null) return const SizedBox.shrink();
+    
     return Card(
       elevation: 0,
       color: colorScheme.primaryContainer,
@@ -559,12 +734,42 @@ class _WeatherPageState extends State<WeatherPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${_selectedLocation?.name ?? ''} 天气信息',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onPrimaryContainer,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          // 如果是定位获得的，显示定位图标
+                          if (_isFromLocation) ...[
+                            Icon(
+                              Icons.my_location,
+                              size: 18,
+                              color: colorScheme.onPrimaryContainer,
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              '${_selectedLocation!.name} 天气信息',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_selectedLocation!.adm2}, ${_selectedLocation!.adm1}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
