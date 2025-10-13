@@ -68,7 +68,6 @@ class WearableCommunicationPage extends StatefulWidget {
 }
 
 class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
-  String _receivedMessage = '';
   bool _isConnecting = false;
   bool _isConnected = false;
   String _deviceId = '';
@@ -93,12 +92,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   @override
   void initState() {
     super.initState();
-    // 设置消息接收回调
-    WearableService.setMessageCallback((message) {
-      setState(() {
-        _receivedMessage = message;
-      });
-    });
     
     // 获取应用版本信息
     _loadAppVersion();
@@ -532,16 +525,25 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+      body: Column(
+        children: [
+          Expanded(
+            child: SafeArea(
+              bottom: false,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16.0,
+                    16.0,
+                    16.0,
+                    _weatherData != null ? 0 : 16.0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                 // 标题栏
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 20.0, top: 8.0),
+                  padding: const EdgeInsets.only(bottom: 16.0, top: 8.0, left: 4.0),
                   child: Row(
                     children: [
                       Expanded(
@@ -588,68 +590,62 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 // 设备连接卡片（重构版）
                 _buildDeviceCard(colorScheme),
                 
-                // 天气数据卡片
-                if (_weatherData != null) ...[
-                  const SizedBox(height: 16),
-                  _buildWeatherDataCard(colorScheme),
-                ],
-                
-                // 天气加载中
-                if (_isLoadingWeather) ...[
-                  const SizedBox(height: 16),
-                  _buildWeatherLoadingCard(colorScheme),
-                ],
+                // 天气卡片（统一：未配置/加载中/已配置）
+                const SizedBox(height: 12),
+                _buildWeatherDataCard(colorScheme),
                 
                 // 天气错误信息
                 if (_weatherError.isNotEmpty) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildWeatherErrorCard(colorScheme),
                 ],
                 
-                // 未配置天气提示
-                if (_selectedLocation == null && !_isLoadingWeather) ...[
-                  const SizedBox(height: 16),
-                  _buildNoWeatherConfigCard(colorScheme),
-                ],
-                
-                // 收到的消息卡片
-                if (_receivedMessage.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _buildMessageCard(colorScheme),
-                ],
-              ],
+                // 底部留白（当有底部按钮时）
+                if (_weatherData != null && !_isLoadingWeather) const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+          // 底部操作按钮（仅在有天气数据且非加载时显示）
+          if (_weatherData != null && !_isLoadingWeather) _buildWeatherActions(colorScheme),
+        ],
       ),
     );
   }
 
-  /// 设备连接卡片
+  /// 设备连接卡片（统一设计）
   Widget _buildDeviceCard(ColorScheme colorScheme) {
     return Card(
       elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
-      child: Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: BoxDecoration(
-          color: colorScheme.secondary.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.outlineVariant,
+          width: 1,
         ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _isConnected ? colorScheme.primary : colorScheme.secondary,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
+            // 图标或加载指示器
+            if (_isConnecting)
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: colorScheme.primary,
+                ),
+              )
+            else
+              Icon(
                 Icons.watch,
                 size: 24,
-                color: colorScheme.onPrimary,
+                color: colorScheme.primary,
               ),
-            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -678,317 +674,72 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 ],
               ),
             ),
-            // 右侧按钮（只在未连接时显示）
-            if (!_isConnected) ...[
+            // 右侧刷新按钮（仅未连接时显示）
+            if (!_isConnecting && !_isConnected)
               IconButton(
-                onPressed: _isConnecting ? null : _connectDevice,
-                icon: _isConnecting
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colorScheme.primary,
-                        ),
-                      )
-                    : Icon(
-                        Icons.refresh,
-                        color: colorScheme.primary,
-                      ),
+                onPressed: _connectDevice,
+                icon: const Icon(Icons.refresh),
                 tooltip: '连接设备',
-              ),
-            ] else ...[
-              Icon(
-                Icons.check_circle,
+                iconSize: 22,
                 color: colorScheme.primary,
-                size: 28,
               ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  /// 天气数据卡片
+  /// 天气数据卡片（统一：未配置/加载中/已配置）
   Widget _buildWeatherDataCard(ColorScheme colorScheme) {
+    // 判断当前状态
+    final bool isNotConfigured = _selectedLocation == null && !_isLoadingWeather;
+    
     return Card(
       elevation: 0,
-      color: colorScheme.primaryContainer,
-      child: Column(
-        children: [
-          // 头部：城市信息区域
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.25),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    _isFromLocation ? Icons.my_location : Icons.location_city,
-                    size: 24,
-                    color: colorScheme.onPrimary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _selectedLocation!.name,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_selectedLocation!.adm2}, ${_selectedLocation!.adm1}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // 预报天数标签
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    _selectedForecastDays.replaceAll('d', '天'),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          // 主体：操作按钮区域
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 发送到手表按钮（主要操作）
-                FilledButton.icon(
-                  onPressed: _sendToWatch,
-                  icon: const Icon(Icons.send, size: 22),
-                  label: const Text('发送到手表'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                
-                const SizedBox(height: 10),
-                
-                // 次要操作按钮组
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _copyWeatherData,
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(
-                            color: _copied ? colorScheme.primary : colorScheme.outline,
-                            width: _copied ? 2 : 1,
-                          ),
-                        ),
-                        child: Text(_copied ? '已复制' : '复制数据'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _openWeatherConfig,
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: const Text('修改配置'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 天气加载中卡片
-  Widget _buildWeatherLoadingCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 2,
-      shadowColor: colorScheme.primary.withValues(alpha: 0.3),
-      color: colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Text(
-              '正在获取天气数据...',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.outlineVariant,
+          width: 1,
         ),
       ),
-    );
-  }
-
-  /// 天气错误卡片
-  Widget _buildWeatherErrorCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 2,
-      shadowColor: colorScheme.error.withValues(alpha: 0.3),
-      color: colorScheme.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.error,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.cloud_off,
-                    size: 24,
-                    color: colorScheme.onError,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '获取失败',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onErrorContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _weatherError,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colorScheme.onErrorContainer.withValues(alpha: 0.8),
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _fetchWeather,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colorScheme.error,
-                      foregroundColor: colorScheme.onError,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Text('重试'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _openWeatherConfig,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Text('修改配置'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 未配置天气提示卡片
-  Widget _buildNoWeatherConfigCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
-      child: Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: BoxDecoration(
-          color: colorScheme.secondary.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: colorScheme.secondary,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
+            // 图标：未配置/加载/已配置
+            if (_isLoadingWeather)
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: colorScheme.primary,
+                ),
+              )
+            else if (isNotConfigured)
+              Icon(
                 Icons.cloud_queue,
                 size: 24,
-                color: colorScheme.onSecondary,
+                color: colorScheme.primary,
+              )
+            else
+              Icon(
+                _isFromLocation ? Icons.my_location : Icons.location_city,
+                size: 24,
+                color: colorScheme.primary,
               ),
-            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '未配置天气',
+                    _isLoadingWeather 
+                        ? '正在获取天气数据' 
+                        : isNotConfigured
+                            ? '未配置天气'
+                            : _selectedLocation!.name,
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -997,7 +748,11 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '点击右侧按钮配置',
+                    _isLoadingWeather 
+                        ? '请稍候...'
+                        : isNotConfigured
+                            ? '点击右侧按钮配置位置和天数'
+                            : '${_selectedLocation!.adm2}, ${_selectedLocation!.adm1} · ${_selectedForecastDays.replaceAll('d', '天')}',
                     style: TextStyle(
                       fontSize: 13,
                       color: colorScheme.onSurfaceVariant,
@@ -1006,14 +761,69 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 ],
               ),
             ),
-            // 右侧修改按钮
-            IconButton(
-              onPressed: _openWeatherConfig,
-              icon: Icon(
-                Icons.edit,
-                color: colorScheme.secondary,
+            // 配置/修改按钮（仅在非加载状态显示）
+            if (!_isLoadingWeather)
+              IconButton(
+                onPressed: _openWeatherConfig,
+                icon: Icon(isNotConfigured ? Icons.add_circle_outline : Icons.edit_outlined),
+                tooltip: isNotConfigured ? '配置天气' : '修改配置',
+                iconSize: 22,
+                color: colorScheme.primary,
               ),
-              tooltip: '配置天气',
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 天气操作按钮（底部固定）
+  Widget _buildWeatherActions(ColorScheme colorScheme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16.0),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
+                onPressed: _sendToWatch,
+                icon: const Icon(Icons.send, size: 20),
+                label: const Text('发送到手表'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 1,
+              child: OutlinedButton.icon(
+                onPressed: _copyWeatherData,
+                icon: Icon(
+                  _copied ? Icons.check : Icons.content_copy,
+                  size: 18,
+                ),
+                label: Text(_copied ? '已复制' : '复制'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(
+                    color: _copied ? colorScheme.primary : colorScheme.outline,
+                    width: _copied ? 2 : 1,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1021,63 +831,64 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     );
   }
 
-  /// 收到消息卡片（统一设计）
-  Widget _buildMessageCard(ColorScheme colorScheme) {
+  /// 天气错误卡片（统一设计）
+  Widget _buildWeatherErrorCard(ColorScheme colorScheme) {
     return Card(
-      elevation: 2,
-      shadowColor: colorScheme.tertiary.withValues(alpha: 0.3),
-      color: colorScheme.tertiaryContainer,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.error.withValues(alpha: 0.5),
+          width: 1,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.message,
-                    size: 24,
-                    color: colorScheme.onTertiary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '收到消息',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onTertiaryContainer,
-                  ),
-                ),
-              ],
+            Icon(
+              Icons.cloud_off,
+              size: 24,
+              color: colorScheme.error,
             ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.surface.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '获取失败',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _weatherError,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              child: Text(
-                _receivedMessage,
-                style: TextStyle(
-                  color: colorScheme.onTertiaryContainer,
-                  fontSize: 14,
-                ),
-              ),
+            ),
+            // 重试按钮
+            IconButton(
+              onPressed: _fetchWeather,
+              icon: const Icon(Icons.refresh),
+              tooltip: '重试',
+              iconSize: 22,
+              color: colorScheme.error,
             ),
           ],
         ),
       ),
     );
   }
+
 }
-
-
