@@ -15,7 +15,6 @@ class _WeatherPageState extends State<WeatherPage> {
   
   bool _isLoading = false;
   bool _isLocating = false;
-  String _errorMessage = '';
   
   List<CityLocation> _recentSearches = [];
   List<CityLocation> _recentLocations = []; // 最近定位的位置
@@ -58,15 +57,16 @@ class _WeatherPageState extends State<WeatherPage> {
   /// 搜索城市
   Future<void> _searchLocation() async {
     if (_searchController.text.trim().isEmpty) {
-      setState(() {
-        _errorMessage = '请输入城市名称';
-      });
+      _showInfoDialog(
+        title: '提示',
+        message: '请输入城市名称',
+        icon: Icons.info_outline,
+      );
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _errorMessage = '';
       _selectedLocation = null;
       _isFromLocation = false; // 清除定位标志
     });
@@ -87,9 +87,31 @@ class _WeatherPageState extends State<WeatherPage> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
       });
+      
+      // 显示错误弹窗
+      if (mounted) {
+        _showInfoDialog(
+          title: '搜索失败',
+          message: e.toString().replaceFirst('Exception: ', ''),
+          icon: Icons.error_outline,
+          iconColor: Theme.of(context).colorScheme.error,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _searchLocation();
+              },
+              child: const Text('重试'),
+            ),
+          ],
+        );
+      }
     }
   }
 
@@ -189,33 +211,9 @@ class _WeatherPageState extends State<WeatherPage> {
   Future<void> _useCurrentLocation() async {
     setState(() {
       _isLocating = true;
-      _errorMessage = '';
       _selectedLocation = null;
       _isFromLocation = false;
     });
-
-    // 显示定位提示
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(width: 12),
-              Text('正在定位并查询城市信息...'),
-            ],
-          ),
-          duration: const Duration(seconds: 20),
-        ),
-      );
-    }
 
     try {
       // 步骤1：获取GPS定位（经纬度）
@@ -246,36 +244,68 @@ class _WeatherPageState extends State<WeatherPage> {
       });
 
       if (mounted) {
-        // 清除定位中的提示
-        ScaffoldMessenger.of(context).clearSnackBars();
-        
-        // 显示定位成功信息
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('定位成功: ${cityInfo.name} (${cityInfo.adm2}, ${cityInfo.adm1})'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            duration: const Duration(seconds: 2),
-          ),
+        // 显示定位成功弹窗
+        _showInfoDialog(
+          title: '定位成功',
+          message: '${cityInfo.name} (${cityInfo.adm2}, ${cityInfo.adm1})',
+          icon: Icons.location_on,
+          iconColor: Colors.green,
         );
       }
       
       // 不立即保存，让用户选择预报天数
     } catch (e) {
-      // 清除定位中的提示
-      if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-      }
-      
       setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
         _isLocating = false;
       });
       
-      // 如果是权限问题，显示更友好的提示
-      if (e.toString().contains('永久拒绝')) {
-        _showPermissionDeniedDialog();
+      // 如果是权限问题，显示权限对话框，否则显示通用错误
+      if (mounted) {
+        if (e.toString().contains('永久拒绝')) {
+          _showPermissionDeniedDialog();
+        } else {
+          _showInfoDialog(
+            title: '定位失败',
+            message: e.toString().replaceFirst('Exception: ', ''),
+            icon: Icons.error_outline,
+            iconColor: Theme.of(context).colorScheme.error,
+          );
+        }
       }
     }
+  }
+
+  /// 统一的提示对话框
+  void _showInfoDialog({
+    required String title,
+    required String message,
+    IconData? icon,
+    Color? iconColor,
+    List<Widget>? actions,
+  }) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: iconColor ?? Theme.of(context).colorScheme.primary, size: 28),
+                const SizedBox(width: 12),
+              ],
+              Expanded(child: Text(title)),
+            ],
+          ),
+          content: Text(message),
+          actions: actions ?? [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 显示权限被永久拒绝对话框
@@ -372,12 +402,6 @@ class _WeatherPageState extends State<WeatherPage> {
                   if (_selectedLocation != null) ...[
                     const SizedBox(height: 24),
                     _buildForecastDaysSelector(colorScheme),
-                  ],
-                  
-                  // 错误信息
-                  if (_errorMessage.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    _buildErrorCard(colorScheme),
                   ],
                 ],
               ),
@@ -611,64 +635,5 @@ class _WeatherPageState extends State<WeatherPage> {
     );
   }
 
-  /// 错误信息卡片
-  Widget _buildErrorCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.error_outline, color: colorScheme.error, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  '错误信息',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onErrorContainer,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _errorMessage,
-              style: TextStyle(
-                color: colorScheme.onErrorContainer,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                FilledButton(
-                  onPressed: _isLoading ? null : _searchLocation,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colorScheme.error,
-                    foregroundColor: colorScheme.onError,
-                  ),
-                  child: const Text('重试'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () {
-                    setState(() {
-                      _errorMessage = '';
-                    });
-                  },
-                  child: const Text('关闭'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 

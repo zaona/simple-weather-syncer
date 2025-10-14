@@ -86,7 +86,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   bool _isFromLocation = false;
   WeatherData? _weatherData;
   bool _isLoadingWeather = false;
-  String _weatherError = '';
   bool _copied = false;
 
   @override
@@ -127,65 +126,36 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   }) async {
     if (!mounted) return;
     
-    // 显示加载提示
-    if (showLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(width: 12),
-              Text('正在检查更新...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
     final result = await UpdateService.checkForUpdateManually();
     
     if (!mounted) return;
-    
-    // 清除加载提示
-    if (showLoading) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-    }
     
     // 处理检查结果
     if (result.checkFailed) {
       // 检查失败 - 网络错误
       if (showError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.wifi_off, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(result.errorMessage ?? '网络连接失败'),
-                ),
-              ],
+        _showInfoDialog(
+          title: '检查更新失败',
+          message: result.errorMessage ?? '网络连接失败，请检查网络后重试',
+          icon: Icons.wifi_off,
+          iconColor: Colors.orange,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
             ),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: '重试',
-              textColor: Colors.white,
-              onPressed: () => _checkForUpdate(
-                showLoading: showLoading,
-                showError: showError,
-                showNoUpdate: showNoUpdate,
-              ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _checkForUpdate(
+                  showLoading: showLoading,
+                  showError: showError,
+                  showNoUpdate: showNoUpdate,
+                );
+              },
+              child: const Text('重试'),
             ),
-          ),
+          ],
         );
       }
     } else if (result.hasUpdate && result.updateInfo != null) {
@@ -194,18 +164,11 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     } else {
       // 已是最新版本
       if (showNoUpdate) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                SizedBox(width: 12),
-                Text('已是最新版本'),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
+        _showInfoDialog(
+          title: '已是最新版本',
+          message: '当前已是最新版本，无需更新',
+          icon: Icons.check_circle,
+          iconColor: Colors.green,
         );
       }
     }
@@ -248,7 +211,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
 
     setState(() {
       _isLoadingWeather = true;
-      _weatherError = '';
       _weatherData = null;
     });
 
@@ -265,9 +227,31 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
       });
     } catch (e) {
       setState(() {
-        _weatherError = e.toString().replaceFirst('Exception: ', '');
         _isLoadingWeather = false;
       });
+      
+      // 显示错误弹窗
+      if (mounted) {
+        _showInfoDialog(
+          title: '获取失败',
+          message: e.toString().replaceFirst('Exception: ', ''),
+          icon: Icons.cloud_off,
+          iconColor: Theme.of(context).colorScheme.error,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _fetchWeather();
+              },
+              child: const Text('重试'),
+            ),
+          ],
+        );
+      }
     }
   }
 
@@ -286,21 +270,20 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
       await WearableService.sendMessage(_weatherData!.toJsonString());
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('天气数据已发送到手表'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            duration: const Duration(seconds: 2),
-          ),
+        _showInfoDialog(
+          title: '发送成功',
+          message: '天气数据已成功发送到手表',
+          icon: Icons.check_circle,
+          iconColor: Colors.green,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('发送失败: ${e.toString().replaceFirst('Exception: ', '')}'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
+        _showInfoDialog(
+          title: '发送失败',
+          message: e.toString().replaceFirst('Exception: ', ''),
+          icon: Icons.error_outline,
+          iconColor: Theme.of(context).colorScheme.error,
         );
       }
     }
@@ -317,12 +300,11 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('已复制到剪贴板'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            duration: const Duration(seconds: 2),
-          ),
+        _showInfoDialog(
+          title: '复制成功',
+          message: '天气数据已复制到剪贴板',
+          icon: Icons.check_circle,
+          iconColor: Colors.green,
         );
       }
 
@@ -376,13 +358,12 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
             _deviceName = result['deviceName'] ?? '';
           });
           
-          // 显示SnackBar
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('设备连接成功'),
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              duration: const Duration(seconds: 2),
-            ),
+          // 显示成功弹窗
+          _showInfoDialog(
+            title: '连接成功',
+            message: '设备已成功连接',
+            icon: Icons.check_circle,
+            iconColor: Colors.green,
           );
         } else {
           // 连接失败，清除设备信息
@@ -421,7 +402,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     
     // 需要连续点击7次
     const requiredTaps = 7;
-    final remaining = requiredTaps - _versionTapCount;
     
     if (_versionTapCount >= requiredTaps) {
       // 重置计数
@@ -430,36 +410,48 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
         _lastTapTime = null;
       });
       
-      // 显示成功提示并打开SDK测试页面
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('🔓 开发者模式已激活'),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          duration: const Duration(seconds: 1),
-        ),
-      );
-      
-      // 短暂延迟后打开页面
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const SdkTestPage(),
-            ),
-          );
-        }
-      });
-    } else if (_versionTapCount >= 3) {
-      // 点击3次后开始显示提示
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('再点击 $remaining 次进入开发者模式'),
-          duration: const Duration(milliseconds: 800),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      // 直接打开SDK测试页面
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const SdkTestPage(),
+          ),
+        );
+      }
     }
+  }
+
+  /// 统一的提示对话框
+  void _showInfoDialog({
+    required String title,
+    required String message,
+    IconData? icon,
+    Color? iconColor,
+    List<Widget>? actions,
+  }) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: iconColor ?? Theme.of(context).colorScheme.primary, size: 28),
+                const SizedBox(width: 12),
+              ],
+              Expanded(child: Text(title)),
+            ],
+          ),
+          content: Text(message),
+          actions: actions ?? [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 显示错误对话框
@@ -593,12 +585,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 // 天气卡片（统一：未配置/加载中/已配置）
                 const SizedBox(height: 12),
                 _buildWeatherDataCard(colorScheme),
-                
-                // 天气错误信息
-                if (_weatherError.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _buildWeatherErrorCard(colorScheme),
-                ],
                 
                 // 底部留白（当有底部按钮时）
                 if (_weatherData != null && !_isLoadingWeather) const SizedBox(height: 12),
@@ -824,66 +810,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 天气错误卡片（统一设计）
-  Widget _buildWeatherErrorCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: colorScheme.error.withValues(alpha: 0.5),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Icon(
-              Icons.cloud_off,
-              size: 24,
-              color: colorScheme.error,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '获取失败',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _weatherError,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            // 重试按钮
-            IconButton(
-              onPressed: _fetchWeather,
-              icon: const Icon(Icons.refresh),
-              tooltip: '重试',
-              iconSize: 22,
-              color: colorScheme.error,
             ),
           ],
         ),
