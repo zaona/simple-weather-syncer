@@ -187,7 +187,7 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     await _connectDevice();
   }
 
-  /// 加载天气配置并获取天气数据
+  /// 加载天气配置（不自动获取天气数据）
   Future<void> _loadWeatherConfiguration() async {
     // 加载保存的位置配置
     final locationConfig = await WeatherService.loadSelectedLocation();
@@ -200,8 +200,7 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
         _selectedForecastDays = forecastDays;
       });
       
-      // 自动获取天气数据
-      await _fetchWeather();
+      // 不自动获取天气数据，等待用户主动点击按钮时再获取
     }
   }
 
@@ -257,6 +256,10 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
 
   /// 发送天气数据到手表
   Future<void> _sendToWatch() async {
+    // 先获取最新的天气数据
+    await _fetchWeather();
+    
+    // 如果获取失败，_fetchWeather已经显示错误提示，直接返回
     if (_weatherData == null) return;
 
     try {
@@ -291,6 +294,10 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
 
   /// 复制天气数据
   Future<void> _copyWeatherData() async {
+    // 先获取最新的天气数据
+    await _fetchWeather();
+    
+    // 如果获取失败，_fetchWeather已经显示错误提示，直接返回
     if (_weatherData == null) return;
 
     try {
@@ -587,15 +594,15 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 _buildWeatherDataCard(colorScheme),
                 
                 // 底部留白（当有底部按钮时）
-                if (_weatherData != null && !_isLoadingWeather) const SizedBox(height: 12),
+                if (_selectedLocation != null && !_isLoadingWeather) const SizedBox(height: 12),
                     ],
                   ),
                 ),
               ),
             ),
           ),
-          // 底部操作按钮（仅在有天气数据且非加载时显示）
-          if (_weatherData != null && !_isLoadingWeather) _buildWeatherActions(colorScheme),
+          // 底部操作按钮（仅在配置了位置且非加载时显示）
+          if (_selectedLocation != null && !_isLoadingWeather) _buildWeatherActions(colorScheme),
         ],
       ),
     );
