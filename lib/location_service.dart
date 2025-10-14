@@ -46,45 +46,52 @@ class LocationService {
         throw Exception('未获取到位置权限');
       }
 
-      // 使用中等精度定位（避免触发Google位置信息精确度服务提示）
+      // 三级降级定位策略
       Position? position;
       
-      try {
-        // 首先尝试获取最后已知位置（快速且不触发提示）
-        position = await Geolocator.getLastKnownPosition();
-        
-        // 如果没有缓存位置，使用中等精度定位（不会触发Google服务提示）
-        position ??= await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,  // 使用中等精度，避免触发提示
-            timeLimit: Duration(seconds: 15),
-          ),
-        ).timeout(
-          const Duration(seconds: 15),
-          onTimeout: () => throw Exception('定位超时'),
-        );
-      } catch (e) {
-        // 如果中等精度也失败，尝试低精度定位（兜底方案）
-        try {
-          position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.low,
-              timeLimit: Duration(seconds: 10),
-            ),
-          ).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => throw Exception('定位超时'),
-          );
-        } catch (e2) {
-          throw Exception('定位超时，请确保已开启位置服务');
-        }
-      }
-
-      // 格式化为 "经度,纬度"（保留两位小数）
-      final longitude = position.longitude.toStringAsFixed(2);
-      final latitude = position.latitude.toStringAsFixed(2);
+      // 1️⃣ 优先：获取缓存位置（最快，不消耗电量）
+      position = await Geolocator.getLastKnownPosition();
       
-      return '$longitude,$latitude';
+      if (position != null) {
+        // 格式化为 "经度,纬度"（保留两位小数）
+        final longitude = position.longitude.toStringAsFixed(2);
+        final latitude = position.latitude.toStringAsFixed(2);
+        return '$longitude,$latitude';
+      }
+      
+      // 2️⃣ 次选：低精度定位（实机更快更稳定，30秒超时）
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: _getLocationSettings(LocationAccuracy.low),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw TimeoutException('定位超时'),
+        );
+        
+        // 格式化为 "经度,纬度"（保留两位小数）
+        final longitude = position.longitude.toStringAsFixed(2);
+        final latitude = position.latitude.toStringAsFixed(2);
+        return '$longitude,$latitude';
+      } catch (e) {
+        // 如果低精度失败，继续尝试最低精度
+      }
+      
+      // 3️⃣ 兜底：最低精度定位（20秒超时，最后的保障）
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: _getLocationSettings(LocationAccuracy.lowest),
+        ).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw TimeoutException('定位超时'),
+        );
+        
+        // 格式化为 "经度,纬度"（保留两位小数）
+        final longitude = position.longitude.toStringAsFixed(2);
+        final latitude = position.latitude.toStringAsFixed(2);
+        return '$longitude,$latitude';
+      } catch (e2) {
+        throw Exception('定位超时，请确保已开启位置服务');
+      }
     } on TimeoutException {
       throw Exception('定位超时，请确保已开启位置服务');
     } catch (e) {
@@ -93,6 +100,19 @@ class LocationService {
       }
       throw Exception('获取位置失败: ${e.toString()}');
     }
+  }
+
+  /// 获取 Android 平台的定位设置
+  /// 
+  /// 使用原生定位管理器，不依赖 Google Play Services
+  static AndroidSettings _getLocationSettings(LocationAccuracy accuracy) {
+    return AndroidSettings(
+      accuracy: accuracy,
+      distanceFilter: 100,  // 距离过滤器：移动100米才更新
+      forceLocationManager: true,  // 强制使用 Android 原生定位管理器，不依赖 Google Play Services
+      intervalDuration: const Duration(seconds: 5),  // 定位更新间隔
+      timeLimit: const Duration(seconds: 30),  // 定位超时限制
+    );
   }
 
   /// 获取详细的位置信息（包含更多数据）
