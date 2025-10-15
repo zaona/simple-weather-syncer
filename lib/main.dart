@@ -9,6 +9,8 @@ import 'update_service.dart';
 import 'update_dialog.dart';
 import 'weather_service.dart';
 import 'weather_models.dart';
+import 'settings_page.dart';
+import 'settings_service.dart';
 
 Future<void> main() async {
   // 加载环境变量
@@ -87,6 +89,9 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   WeatherData? _weatherData;
   bool _isLoadingWeather = false;
   bool _copied = false;
+  
+  // FAB 按钮设置
+  FabActionType _fabActionType = FabActionType.sync;
 
   @override
   void initState() {
@@ -103,6 +108,9 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     
     // 加载天气配置并获取天气数据
     _loadWeatherConfiguration();
+    
+    // 加载 FAB 按钮设置
+    _loadFabActionType();
   }
 
   /// 加载应用版本信息
@@ -340,6 +348,28 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     }
   }
 
+  /// 打开设置页面
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const SettingsPage()),
+    );
+    
+    // 设置页面关闭后重新加载 FAB 设置
+    if (mounted) {
+      await _loadFabActionType();
+    }
+  }
+
+  /// 加载 FAB 按钮设置
+  Future<void> _loadFabActionType() async {
+    final fabType = await SettingsService.loadFabActionType();
+    if (mounted) {
+      setState(() {
+        _fabActionType = fabType;
+      });
+    }
+  }
+
   @override
   void dispose() {
     super.dispose();
@@ -570,15 +600,11 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                           ],
                         ),
                       ),
-                      // 手动检查更新按钮
+                      // 设置按钮
                       IconButton(
-                        onPressed: () => _checkForUpdate(
-                          showLoading: true,
-                          showError: true,
-                          showNoUpdate: true,
-                        ),
-                        icon: const Icon(Icons.system_update),
-                        tooltip: '检查更新',
+                        onPressed: _openSettings,
+                        icon: const Icon(Icons.settings),
+                        tooltip: '设置',
                         iconSize: 26,
                         color: colorScheme.primary,
                       ),
@@ -593,18 +619,20 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
                 const SizedBox(height: 12),
                 _buildWeatherDataCard(colorScheme),
                 
-                // 底部留白（当有底部按钮时）
-                if (_selectedLocation != null && !_isLoadingWeather) const SizedBox(height: 12),
+                // 底部留白（当有 FAB 时）
+                if (_selectedLocation != null && !_isLoadingWeather) const SizedBox(height: 80),
                     ],
                   ),
                 ),
               ),
             ),
           ),
-          // 底部操作按钮（仅在配置了位置且非加载时显示）
-          if (_selectedLocation != null && !_isLoadingWeather) _buildWeatherActions(colorScheme),
         ],
       ),
+      // FloatingActionButton（仅在配置了位置且非加载时显示）
+      floatingActionButton: (_selectedLocation != null && !_isLoadingWeather)
+          ? _buildFab(colorScheme)
+          : null,
     );
   }
 
@@ -769,58 +797,34 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     );
   }
 
-  /// 天气操作按钮（底部固定）
-  Widget _buildWeatherActions(ColorScheme colorScheme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
+  /// FloatingActionButton（根据设置显示不同功能）
+  Widget _buildFab(ColorScheme colorScheme) {
+    final isSyncMode = _fabActionType == FabActionType.sync;
+    
+    return FloatingActionButton.extended(
+      onPressed: isSyncMode ? _sendToWatch : _copyWeatherData,
+      icon: Icon(
+        isSyncMode 
+            ? Icons.send 
+            : (_copied ? Icons.check : Icons.content_copy),
+        size: 20,
       ),
-      padding: const EdgeInsets.all(16.0),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: FilledButton.icon(
-                onPressed: _sendToWatch,
-                icon: const Icon(Icons.send, size: 20),
-                label: const Text('发送到手表'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 1,
-              child: OutlinedButton.icon(
-                onPressed: _copyWeatherData,
-                icon: Icon(
-                  _copied ? Icons.check : Icons.content_copy,
-                  size: 18,
-                ),
-                label: Text(_copied ? '已复制' : '复制'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: BorderSide(
-                    color: _copied ? colorScheme.primary : colorScheme.outline,
-                    width: _copied ? 2 : 1,
-                  ),
-                ),
-              ),
-            ),
-          ],
+      label: Text(
+        isSyncMode 
+            ? '同步' 
+            : (_copied ? '已复制' : '复制'),
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
         ),
       ),
+      elevation: 4,
+      backgroundColor: isSyncMode 
+          ? colorScheme.primaryContainer 
+          : (_copied ? colorScheme.tertiaryContainer : colorScheme.secondaryContainer),
+      foregroundColor: isSyncMode 
+          ? colorScheme.onPrimaryContainer 
+          : (_copied ? colorScheme.onTertiaryContainer : colorScheme.onSecondaryContainer),
     );
   }
 
