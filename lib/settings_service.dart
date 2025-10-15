@@ -10,6 +10,9 @@ enum FabActionType {
 class SettingsService {
   // SharedPreferences 键
   static const String _fabActionTypeKey = 'fab_action_type';
+  static const String _customApiKeyKey = 'custom_api_key';
+  static const String _customApiHostKey = 'custom_api_host';
+  static const String _useCustomApiKey = 'use_custom_api';
   
   /// 保存 FAB 按钮动作类型
   static Future<void> saveFabActionType(FabActionType type) async {
@@ -30,6 +33,43 @@ class SettingsService {
       (e) => e.name == typeString,
       orElse: () => FabActionType.sync,
     );
+  }
+  
+  /// 保存自定义 API 配置
+  static Future<void> saveCustomApiConfig({
+    required String apiKey,
+    required String apiHost,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_customApiKeyKey, apiKey);
+    await prefs.setString(_customApiHostKey, apiHost);
+    await prefs.setBool(_useCustomApiKey, true);
+  }
+  
+  /// 读取自定义 API Key
+  static Future<String?> loadCustomApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_customApiKeyKey);
+  }
+  
+  /// 读取自定义 API Host
+  static Future<String?> loadCustomApiHost() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_customApiHostKey);
+  }
+  
+  /// 检查是否使用自定义 API 配置
+  static Future<bool> isUsingCustomApi() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_useCustomApiKey) ?? false;
+  }
+  
+  /// 恢复默认 API 配置
+  static Future<void> resetToDefaultApi() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_customApiKeyKey);
+    await prefs.remove(_customApiHostKey);
+    await prefs.remove(_useCustomApiKey);
   }
 }
 

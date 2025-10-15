@@ -3,13 +3,140 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'weather_models.dart';
+import 'settings_service.dart';
 
 /// 天气服务类
 class WeatherService {
-  // 从环境变量读取 API Key
+  // 缓存的自定义配置
+  static String? _cachedCustomApiKey;
+  static String? _cachedCustomApiHost;
+  static bool? _cachedUseCustomApi;
+  
+  /// 获取 API Key（优先使用自定义配置）
+  static Future<String> getApiKey() async {
+    _cachedUseCustomApi ??= await SettingsService.isUsingCustomApi();
+    
+    if (_cachedUseCustomApi == true) {
+      _cachedCustomApiKey ??= await SettingsService.loadCustomApiKey();
+      if (_cachedCustomApiKey != null && _cachedCustomApiKey!.isNotEmpty) {
+        return _cachedCustomApiKey!;
+      }
+    }
+    
+    return dotenv.env['QWEATHER_API_KEY'] ?? '';
+  }
+  
+  /// 获取 API Host（优先使用自定义配置）
+  static Future<String> getApiHost() async {
+    _cachedUseCustomApi ??= await SettingsService.isUsingCustomApi();
+    
+    if (_cachedUseCustomApi == true) {
+      _cachedCustomApiHost ??= await SettingsService.loadCustomApiHost();
+      if (_cachedCustomApiHost != null && _cachedCustomApiHost!.isNotEmpty) {
+        return _cachedCustomApiHost!;
+      }
+    }
+    
+    return dotenv.env['QWEATHER_API_HOST'] ?? 'devapi.qweather.com';
+  }
+  
+  /// 清除缓存（在更新配置后调用）
+  static void clearCache() {
+    _cachedCustomApiKey = null;
+    _cachedCustomApiHost = null;
+    _cachedUseCustomApi = null;
+  }
+  
+  /// 测试API连通性
+  /// 返回 Map，包含 success (bool) 和 message (String)
+  static Future<Map<String, dynamic>> testApiConnection({
+    String? testApiKey,
+    String? testApiHost,
+  }) async {
+    try {
+      final key = testApiKey ?? await getApiKey();
+      final host = testApiHost ?? await getApiHost();
+      
+      if (key.isEmpty) {
+        return {
+          'success': false,
+          'message': 'API Key 不能为空',
+        };
+      }
+      
+      if (host.isEmpty) {
+        return {
+          'success': false,
+          'message': 'API Host 不能为空',
+        };
+      }
+      
+      // 使用一个简单的API请求测试连通性（搜索北京）
+      final uri = Uri.parse('https://$host/geo/v2/city/lookup?location=北京');
+      
+      final response = await http.get(
+        uri,
+        headers: {
+          'X-QW-Api-Key': key,
+          'Content-Type': 'application/json',
+          'X-Android-Package-Name': androidPackageName,
+          'X-Android-Cert': androidCertSha1,
+        },
+      ).timeout(const Duration(seconds: 10));
+      
+      if (response.statusCode == 401) {
+        return {
+          'success': false,
+          'message': 'API密钥无效或已过期',
+        };
+      } else if (response.statusCode == 403) {
+        return {
+          'success': false,
+          'message': '访问被拒绝，请检查API权限',
+        };
+      } else if (response.statusCode == 429) {
+        return {
+          'success': false,
+          'message': '请求过于频繁，请稍后再试',
+        };
+      } else if (response.statusCode != 200) {
+        return {
+          'success': false,
+          'message': '连接失败，状态码: ${response.statusCode}',
+        };
+      }
+      
+      final data = json.decode(response.body);
+      
+      if (data['code'] == '200') {
+        return {
+          'success': true,
+          'message': 'API连接成功！配置有效',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'API返回错误，代码: ${data['code']}',
+        };
+      }
+    } catch (e) {
+      if (e.toString().contains('TimeoutException')) {
+        return {
+          'success': false,
+          'message': '连接超时，请检查网络或API Host是否正确',
+        };
+      }
+      return {
+        'success': false,
+        'message': '连接测试失败：${e.toString()}',
+      };
+    }
+  }
+  
+  // 从环境变量读取 API Key（兼容旧代码）
   static String get apiKey => dotenv.env['QWEATHER_API_KEY'] ?? '';
   
-  // 从环境变量读取 API Host
+  // 从环境变量读取 API Host（兼容旧代码）
   static String get apiHost => dotenv.env['QWEATHER_API_HOST'] ?? 'devapi.qweather.com';
   
   // 从环境变量读取 Android 包名
@@ -18,7 +145,18 @@ class WeatherService {
   // 从环境变量读取 Android 证书 SHA-1 指纹
   static String get androidCertSha1 => dotenv.env['ANDROID_CERT_SHA1'] ?? '';
   
-  // API 地址
+  // API 地址（异步版本）
+  static Future<String> getGeoApiUrl() async {
+    final host = await getApiHost();
+    return 'https://$host/geo/v2/city/lookup';
+  }
+  
+  static Future<String> getWeatherApiBaseUrl() async {
+    final host = await getApiHost();
+    return 'https://$host/v7/weather';
+  }
+  
+  // API 地址（同步版本，兼容旧代码）
   static String get geoApiUrl => 'https://$apiHost/geo/v2/city/lookup';
   static String get weatherApiBaseUrl => 'https://$apiHost/v7/weather';
   
@@ -36,12 +174,14 @@ class WeatherService {
     }
 
     try {
-      final uri = Uri.parse('$geoApiUrl?location=${Uri.encodeComponent(cityName)}');
+      final apiUrl = await getGeoApiUrl();
+      final key = await getApiKey();
+      final uri = Uri.parse('$apiUrl?location=${Uri.encodeComponent(cityName)}');
       
       final response = await http.get(
         uri,
         headers: {
-          'X-QW-Api-Key': apiKey,
+          'X-QW-Api-Key': key,
           'Content-Type': 'application/json',
           'X-Android-Package-Name': androidPackageName,
           'X-Android-Cert': androidCertSha1,
@@ -85,12 +225,14 @@ class WeatherService {
     }
 
     try {
-      final uri = Uri.parse('$weatherApiBaseUrl/$days?location=$location');
+      final apiUrl = await getWeatherApiBaseUrl();
+      final key = await getApiKey();
+      final uri = Uri.parse('$apiUrl/$days?location=$location');
       
       final response = await http.get(
         uri,
         headers: {
-          'X-QW-Api-Key': apiKey,
+          'X-QW-Api-Key': key,
           'Content-Type': 'application/json',
           'X-Android-Package-Name': androidPackageName,
           'X-Android-Cert': androidCertSha1,
@@ -132,12 +274,14 @@ class WeatherService {
     }
 
     try {
-      final uri = Uri.parse('$geoApiUrl?location=$coordinates');
+      final apiUrl = await getGeoApiUrl();
+      final key = await getApiKey();
+      final uri = Uri.parse('$apiUrl?location=$coordinates');
       
       final response = await http.get(
         uri,
         headers: {
-          'X-QW-Api-Key': apiKey,
+          'X-QW-Api-Key': key,
           'Content-Type': 'application/json',
           'X-Android-Package-Name': androidPackageName,
           'X-Android-Cert': androidCertSha1,
