@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'settings_service.dart';
 import 'update_service.dart';
 import 'update_dialog.dart';
@@ -83,6 +84,33 @@ class _SettingsPageState extends State<SettingsPage> {
         message: '当前已是最新版本，无需更新',
         icon: Icons.check_circle,
         iconColor: Colors.green,
+      );
+    }
+  }
+
+  /// 打开捐赠页面
+  Future<void> _openDonationPage() async {
+    final Uri url = Uri.parse('https://afdian.com/a/zaona');
+    
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        _showInfoDialog(
+          title: '无法打开链接',
+          message: '无法打开捐赠页面，请稍后重试',
+          icon: Icons.error_outline,
+          iconColor: Colors.red,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showInfoDialog(
+        title: '打开失败',
+        message: '打开捐赠页面时出现错误：$e',
+        icon: Icons.error_outline,
+        iconColor: Colors.red,
       );
     }
   }
@@ -181,6 +209,23 @@ class _SettingsPageState extends State<SettingsPage> {
                     color: colorScheme.onSurfaceVariant,
                   ),
             onTap: _isCheckingUpdate ? null : _checkForUpdate,
+          ),
+          
+          const Divider(height: 1, indent: 72),
+          
+          // 捐赠
+          ListTile(
+            leading: Icon(
+              Icons.favorite,
+              color: colorScheme.primary,
+            ),
+            title: const Text('捐赠'),
+            subtitle: const Text('支持开发者持续更新'),
+            trailing: Icon(
+              Icons.open_in_new,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            onTap: _openDonationPage,
           ),
           
           const Divider(height: 1, indent: 72),
