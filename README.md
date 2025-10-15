@@ -62,6 +62,17 @@ storeFile=../app/your-keystore.jks
 # 调试版本
 flutter run
 
-# 发布版本
-flutter build apk --release
+# 发布测试版本
+flutter build apk --release --tree-shake-icons
+
+# 发布正式版本（分架构 APK）
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/app/outputs/symbols --tree-shake-icons
+
+# 构建 App Bundle
+flutter build appbundle --release --obfuscate --split-debug-info=build/app/outputs/symbols --tree-shake-icons
 ```
+
+### 5. 构建产物
+- **arm64-v8a** (64位 ARM)
+- **armeabi-v7a** (32位 ARM)
+- **x86_64**
