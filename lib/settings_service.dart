@@ -13,6 +13,7 @@ class SettingsService {
   static const String _customApiKeyKey = 'custom_api_key';
   static const String _customApiHostKey = 'custom_api_host';
   static const String _useCustomApiKey = 'use_custom_api';
+  static const String _compatibilityModeKey = 'compatibility_mode';
   
   /// 保存 FAB 按钮动作类型
   static Future<void> saveFabActionType(FabActionType type) async {
@@ -70,6 +71,18 @@ class SettingsService {
     await prefs.remove(_customApiKeyKey);
     await prefs.remove(_customApiHostKey);
     await prefs.remove(_useCustomApiKey);
+  }
+  
+  /// 保存兼容模式设置
+  static Future<void> saveCompatibilityMode(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_compatibilityModeKey, enabled);
+  }
+  
+  /// 读取兼容模式设置，默认为关闭
+  static Future<bool> loadCompatibilityMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_compatibilityModeKey) ?? false;
   }
 }
 

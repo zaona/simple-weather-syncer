@@ -95,6 +95,9 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
   
   // 预检相关
   bool _isReadyReceived = false;
+  
+  // 兼容模式
+  bool _compatibilityMode = false;
 
   @override
   void initState() {
@@ -289,6 +292,18 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
     // 如果获取失败，_fetchWeather已经显示错误提示，直接返回
     if (_weatherData == null) return;
 
+    // 兼容模式：直接发送数据
+    if (_compatibilityMode) {
+      await _sendWeatherDataDirectly();
+      return;
+    }
+
+    // 标准模式：使用预检握手流程
+    await _sendWeatherDataWithHandshake();
+  }
+
+  /// 兼容模式：直接发送数据
+  Future<void> _sendWeatherDataDirectly() async {
     // 显示进度对话框
     if (!mounted) return;
     showDialog(
@@ -303,7 +318,63 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('正在同步数据到手表...'),
+                Text('正在发送数据...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 直接发送天气数据
+      await WearableService.sendMessage(_weatherData!.toJsonString());
+      
+      // 关闭进度对话框
+      if (mounted) Navigator.of(context).pop();
+      
+      // 显示成功提示
+      if (mounted) {
+        _showInfoDialog(
+          title: '发送成功',
+          message: '天气数据已发送',
+          icon: Icons.check_circle,
+          iconColor: Colors.green,
+        );
+      }
+    } catch (e) {
+      // 关闭进度对话框
+      if (mounted) Navigator.of(context).pop();
+      
+      // 显示错误提示
+      if (mounted) {
+        _showInfoDialog(
+          title: '发送失败',
+          message: e.toString().replaceFirst('Exception: ', ''),
+          icon: Icons.error_outline,
+          iconColor: Theme.of(context).colorScheme.error,
+        );
+      }
+    }
+  }
+
+  /// 标准模式：使用预检握手流程
+  Future<void> _sendWeatherDataWithHandshake() async {
+    // 显示进度对话框
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('正在同步数据...'),
               ],
             ),
           ),
@@ -447,12 +518,14 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
     }
   }
 
-  /// 加载 FAB 按钮设置
+  /// 加载 FAB 按钮设置和兼容模式
   Future<void> _loadFabActionType() async {
     final fabType = await SettingsService.loadFabActionType();
+    final compatibilityMode = await SettingsService.loadCompatibilityMode();
     if (mounted) {
       setState(() {
         _fabActionType = fabType;
+        _compatibilityMode = compatibilityMode;
       });
     }
   }

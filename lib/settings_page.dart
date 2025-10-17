@@ -17,6 +17,7 @@ class _SettingsPageState extends State<SettingsPage> {
   FabActionType _fabActionType = FabActionType.sync;
   bool _isCheckingUpdate = false;
   bool _isUsingCustomApi = false;
+  bool _compatibilityMode = false;
 
   @override
   void initState() {
@@ -28,9 +29,11 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadSettings() async {
     final fabType = await SettingsService.loadFabActionType();
     final useCustomApi = await SettingsService.isUsingCustomApi();
+    final compatibilityMode = await SettingsService.loadCompatibilityMode();
     setState(() {
       _fabActionType = fabType;
       _isUsingCustomApi = useCustomApi;
+      _compatibilityMode = compatibilityMode;
     });
   }
 
@@ -205,6 +208,23 @@ class _SettingsPageState extends State<SettingsPage> {
               color: colorScheme.onSurfaceVariant,
             ),
             onTap: () => _showFabActionTypeDialog(),
+          ),
+          
+          // 兼容模式开关
+          SwitchListTile(
+            secondary: Icon(
+              Icons.speed,
+              color: colorScheme.primary,
+            ),
+            title: const Text('数据发送兼容模式'),
+            subtitle: const Text('跳过预检和自启快应用，直接发送数据'),
+            value: _compatibilityMode,
+            onChanged: (bool value) async {
+              await SettingsService.saveCompatibilityMode(value);
+              setState(() {
+                _compatibilityMode = value;
+              });
+            },
           ),
           
           // API 配置
