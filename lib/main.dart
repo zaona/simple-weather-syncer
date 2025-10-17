@@ -69,7 +69,7 @@ class WearableCommunicationPage extends StatefulWidget {
   State<WearableCommunicationPage> createState() => _WearableCommunicationPageState();
 }
 
-class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
+class _WearableCommunicationPageState extends State<WearableCommunicationPage> with WidgetsBindingObserver {
   bool _isConnecting = false;
   bool _isConnected = false;
   String _deviceId = '';
@@ -92,25 +92,36 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
   
   // FAB 按钮设置
   FabActionType _fabActionType = FabActionType.sync;
+  
+  // 预检相关
+  bool _isReadyReceived = false;
 
   @override
   void initState() {
     super.initState();
     
-    // 获取应用版本信息
+    // 添加生命周期观察者
+    WidgetsBinding.instance.addObserver(this);
+    
+    // 设置消息监听回调
+    WearableService.setMessageCallback(_onMessageReceived);
+    
+    // 初始化各项功能
     _loadAppVersion();
-    
-    // 自动启动连接和监听
     _autoConnect();
-    
-    // 检查应用更新（显示网络错误提示，但不显示无更新提示）
     _checkForUpdate(showError: true);
-    
-    // 加载天气配置并获取天气数据
     _loadWeatherConfiguration();
-    
-    // 加载 FAB 按钮设置
     _loadFabActionType();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // 当应用恢复时，重新设置消息回调
+    if (state == AppLifecycleState.resumed) {
+      WearableService.setMessageCallback(_onMessageReceived);
+    }
   }
 
   /// 加载应用版本信息
@@ -120,6 +131,14 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
       setState(() {
         _appVersion = 'v$version';
       });
+    }
+  }
+
+  /// 消息接收处理
+  void _onMessageReceived(String message) {
+    // 检查消息是否包含ready
+    if (message.contains('ready')) {
+      _isReadyReceived = true;
     }
   }
 
@@ -270,25 +289,93 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
     // 如果获取失败，_fetchWeather已经显示错误提示，直接返回
     if (_weatherData == null) return;
 
+    // 显示进度对话框
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('正在同步数据到手表...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     try {
-      // 先启动快应用
+      // 重新设置消息监听回调（防止被其他页面覆盖）
+      WearableService.setMessageCallback(_onMessageReceived);
+      
+      // 确保消息监听已启动（异步完成后即可用）
+      try {
+        await WearableService.startListening();
+      } catch (e) {
+        // 监听服务可能已经启动，忽略错误
+      }
+      
+      // 重置ready标志并启动快应用
+      _isReadyReceived = false;
       await WearableService.launchWearApp();
       
-      // 等待一小段时间确保快应用已启动
-      await Future.delayed(const Duration(milliseconds: 500));
+      // 预检握手流程（高频握手自动处理启动等待）
+      const sendInterval = Duration(milliseconds: 600);
+      const checkInterval = Duration(milliseconds: 50);
+      const maxAttempts = 15;
+      int attempts = 0;
       
-      // 再发送消息
+      while (attempts < maxAttempts && !_isReadyReceived) {
+        attempts++;
+        
+        try {
+          await WearableService.sendMessage('start');
+        } catch (e) {
+          // 发送失败，继续尝试
+        }
+        
+        // 频繁检查ready响应
+        final checksPerSecond = sendInterval.inMilliseconds ~/ checkInterval.inMilliseconds;
+        for (int i = 0; i < checksPerSecond && !_isReadyReceived; i++) {
+          await Future.delayed(checkInterval);
+          if (_isReadyReceived) break;
+        }
+        
+        if (_isReadyReceived) break;
+      }
+      
+      // 检查是否成功收到ready消息
+      if (!_isReadyReceived) {
+        throw Exception('手表应用未响应');
+      }
+      
+      // 发送天气数据（收到ready后立即发送）
       await WearableService.sendMessage(_weatherData!.toJsonString());
       
+      // 关闭进度对话框
+      if (mounted) Navigator.of(context).pop();
+      
+      // 显示成功提示
       if (mounted) {
         _showInfoDialog(
           title: '发送成功',
-          message: '天气数据已成功发送到手表',
+          message: '天气数据已成功同步到手表',
           icon: Icons.check_circle,
           iconColor: Colors.green,
         );
       }
     } catch (e) {
+      // 关闭进度对话框
+      if (mounted) Navigator.of(context).pop();
+      
+      // 显示错误提示
       if (mounted) {
         _showInfoDialog(
           title: '发送失败',
@@ -372,6 +459,8 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> {
 
   @override
   void dispose() {
+    // 移除生命周期观察者
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
