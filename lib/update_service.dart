@@ -11,49 +11,32 @@ class UpdateService {
   static const String updateConfigUrl = 
       'https://gitee.com/zaona/simple-weather-update/raw/master/update.json';
 
-  /// 检查应用更新（已废弃，请使用 checkForUpdateManually）
-  /// 返回更新信息，如果没有更新则返回null
-  /// 注意：此方法在网络错误时也返回null，无法区分"无更新"和"网络错误"
-  @Deprecated('使用 checkForUpdateManually() 以获得更详细的错误信息')
-  static Future<AppUpdateInfo?> checkForUpdate() async {
-    try {
-      // 获取本地应用版本信息
-      final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersionCode = int.parse(packageInfo.buildNumber);
-
-      // 请求远程更新配置
-      final response = await http.get(
-        Uri.parse(updateConfigUrl),
-        headers: {
-          'Accept': 'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('请求超时');
-        },
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('获取更新信息失败: ${response.statusCode}');
-      }
-
-      // 解析JSON数据
-      final jsonData = json.decode(utf8.decode(response.bodyBytes));
-      final updateInfo = AppUpdateInfo.fromJson(jsonData);
-
-      // 比对版本号
-      if (updateInfo.versionCode > currentVersionCode) {
-        return updateInfo;
-      }
-
-      // 没有更新
-      return null;
-    } catch (e) {
-      // 更新检查失败不影响应用正常使用，静默处理
-      // 可选：使用logger记录错误，或完全忽略
-      return null;
+  /// 移除 ABI 架构偏移量，获取基础版本号
+  /// Flutter 使用 --split-per-abi 构建时会添加偏移量：
+  /// - armeabi-v7a: +1000
+  /// - arm64-v8a: +2000
+  /// - x86: +3000
+  /// - x86_64: +4000
+  /// - universal APK: +0 (无偏移量)
+  static int removeAbiOffset(int versionCode) {
+    // 如果版本号大于等于4000，说明是 x86_64
+    if (versionCode >= 4000) {
+      return versionCode - 4000;
     }
+    // 如果版本号大于等于3000，说明是 x86
+    if (versionCode >= 3000) {
+      return versionCode - 3000;
+    }
+    // 如果版本号大于等于2000，说明是 arm64-v8a
+    if (versionCode >= 2000) {
+      return versionCode - 2000;
+    }
+    // 如果版本号大于等于1000，说明是 armeabi-v7a
+    if (versionCode >= 1000) {
+      return versionCode - 1000;
+    }
+    // 否则是 universal APK 或不使用分包构建
+    return versionCode;
   }
 
   /// 获取当前应用版本信息（版本名 + 构建号）
@@ -81,6 +64,8 @@ class UpdateService {
       // 获取本地应用版本信息
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersionCode = int.parse(packageInfo.buildNumber);
+      // 移除 ABI 架构偏移量，获取基础版本号
+      final baseVersionCode = removeAbiOffset(currentVersionCode);
 
       // 请求远程更新配置（设置10秒超时）
       final response = await http.get(
@@ -100,8 +85,8 @@ class UpdateService {
       final jsonData = json.decode(utf8.decode(response.bodyBytes));
       final updateInfo = AppUpdateInfo.fromJson(jsonData);
 
-      // 比对版本号
-      if (updateInfo.versionCode > currentVersionCode) {
+      // 比对版本号（使用基础版本号）
+      if (updateInfo.versionCode > baseVersionCode) {
         return UpdateCheckResult.hasUpdate(updateInfo);
       }
 
