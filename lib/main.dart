@@ -857,12 +857,12 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
                 ],
               ),
             ),
-            // 右侧刷新按钮（仅未连接时显示）
-            if (!_isConnecting && !_isConnected)
+            // 右侧刷新按钮（连接中时隐藏）
+            if (!_isConnecting)
               IconButton(
                 onPressed: _connectDevice,
                 icon: const Icon(Icons.refresh),
-                tooltip: '连接设备',
+                tooltip: '重新连接设备',
                 iconSize: 22,
                 color: colorScheme.primary,
               ),

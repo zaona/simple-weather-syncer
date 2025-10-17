@@ -17,7 +17,7 @@ class _SettingsPageState extends State<SettingsPage> {
   FabActionType _fabActionType = FabActionType.sync;
   bool _isCheckingUpdate = false;
   bool _isUsingCustomApi = false;
-  bool _compatibilityMode = false;
+  bool _compatibilityMode = true;
 
   @override
   void initState() {
@@ -179,6 +179,38 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// 显示高级同步模式警告
+  Future<bool?> _showAdvancedModeWarning() async {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.orange, size: 28),
+              SizedBox(width: 12),
+              Expanded(child: Text('关于高级同步模式')),
+            ],
+          ),
+          content: const Text(
+            '高级同步模式目前仅在小米手环 10 上测试通过。\n\n'
+            '如果同步失败，请关闭高级同步模式，使用默认的兼容模式。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('我知道了'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -210,19 +242,25 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => _showFabActionTypeDialog(),
           ),
           
-          // 兼容模式开关
+          // 高级同步模式开关
           SwitchListTile(
             secondary: Icon(
               Icons.speed,
               color: colorScheme.primary,
             ),
-            title: const Text('数据发送兼容模式'),
-            subtitle: const Text('跳过预检和自启快应用，直接发送数据'),
-            value: _compatibilityMode,
+            title: const Text('高级同步模式'),
+            subtitle: const Text('自动启动快应用，预检后发送数据'),
+            value: !_compatibilityMode,
             onChanged: (bool value) async {
-              await SettingsService.saveCompatibilityMode(value);
+              // 如果要开启高级同步模式，显示提示
+              if (value) {
+                final confirmed = await _showAdvancedModeWarning();
+                if (confirmed != true) return;
+              }
+              
+              await SettingsService.saveCompatibilityMode(!value);
               setState(() {
-                _compatibilityMode = value;
+                _compatibilityMode = !value;
               });
             },
           ),

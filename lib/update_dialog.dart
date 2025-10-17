@@ -52,149 +52,84 @@ class ForceUpdateDialog extends StatelessWidget {
       // 禁止通过返回键关闭弹窗
       canPop: false,
       child: AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Column(
-          children: [
-            Icon(
-              Icons.system_update,
-              size: 56,
-              color: colorScheme.primary,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '发现新版本',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        contentPadding: const EdgeInsets.all(24),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 版本信息
+              // 图标
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(8),
+                  shape: BoxShape.circle,
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '最新版本：',
-                      style: TextStyle(
-                        color: colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      updateInfo.versionName,
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: Icon(
+                  Icons.system_update,
+                  size: 32,
+                  color: colorScheme.primary,
                 ),
               ),
               
               const SizedBox(height: 16),
               
-              // 更新说明标题
+              // 标题和版本号
               Text(
-                '更新内容：',
+                '发现新版本',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: colorScheme.onSurface,
                 ),
               ),
               
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               
-              // 更新说明内容
+              Text(
+                updateInfo.versionName,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              
+              const SizedBox(height: 20),
+              
+              // 更新说明
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(0),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
+                  color: colorScheme.surface,
                 ),
                 child: Text(
                   updateInfo.updateDescription,
                   style: TextStyle(
                     color: colorScheme.onSurface,
                     fontSize: 14,
-                    height: 1.5,
+                    height: 1.6,
                   ),
                 ),
               ),
               
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               
-              // 强制更新提示
-              if (updateInfo.forceUpdate)
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.warning_rounded,
-                        color: colorScheme.error,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '此版本为强制更新，必须更新后才能继续使用',
-                          style: TextStyle(
-                            color: colorScheme.onErrorContainer,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
+              // 更新按钮
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _openDownloadUrl(context),
+                  icon: const Icon(Icons.download),
+                  label: const Text('立即更新'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
+              ),
             ],
           ),
         ),
-        actions: [
-          // 只有一个按钮：立即更新
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () => _openDownloadUrl(context),
-              icon: const Icon(Icons.download),
-              label: const Text(
-                '立即更新',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-        ],
-        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
       ),
     );
   }

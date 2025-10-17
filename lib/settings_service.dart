@@ -79,10 +79,10 @@ class SettingsService {
     await prefs.setBool(_compatibilityModeKey, enabled);
   }
   
-  /// 读取兼容模式设置，默认为关闭
+  /// 读取兼容模式设置，默认为开启
   static Future<bool> loadCompatibilityMode() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_compatibilityModeKey) ?? false;
+    return prefs.getBool(_compatibilityModeKey) ?? true;
   }
 }
 
