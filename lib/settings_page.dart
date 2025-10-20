@@ -193,8 +193,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
           content: const Text(
-            '高级同步模式目前仅在小米手环 10 上测试通过。\n\n'
-            '如果同步失败，请关闭高级同步模式，使用默认的兼容模式。',
+            '高级同步模式将会自动启动快应用并发送数据，如果同步失败，请关闭高级同步模式，使用默认的兼容模式。',
           ),
           actions: [
             TextButton(

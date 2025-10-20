@@ -206,13 +206,6 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
 
   /// 自动连接设备
   Future<void> _autoConnect() async {
-    // 自动开始监听
-    try {
-      await WearableService.startListening();
-    } catch (e) {
-      // 监听失败不影响主流程
-    }
-    
     // 自动连接设备
     await _connectDevice();
   }
@@ -304,6 +297,14 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
 
   /// 兼容模式：直接发送数据
   Future<void> _sendWeatherDataDirectly() async {
+    // 在发送前临时注册监听
+    WearableService.setMessageCallback(_onMessageReceived);
+    try {
+      await WearableService.startListening();
+    } catch (e) {
+      // 忽略已在监听等错误
+    }
+
     // 显示进度对话框
     if (!mounted) return;
     showDialog(
@@ -354,6 +355,13 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
           icon: Icons.error_outline,
           iconColor: Theme.of(context).colorScheme.error,
         );
+      }
+    } finally {
+      // 发送完成后注销监听
+      try {
+        await WearableService.stopListening();
+      } catch (e) {
+        // 忽略停止监听失败：可能监听未启动或已被系统回收
       }
     }
   }
@@ -455,6 +463,13 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
           iconColor: Theme.of(context).colorScheme.error,
         );
       }
+    } finally {
+      // 无论成功或失败，发送流程结束后注销监听
+      try {
+        await WearableService.stopListening();
+      } catch (e) {
+        // 忽略停止监听失败：可能监听未启动或已被系统回收
+      }
     }
   }
 
@@ -534,6 +549,8 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
   void dispose() {
     // 移除生命周期观察者
     WidgetsBinding.instance.removeObserver(this);
+    // 停止消息监听，避免泄漏
+    WearableService.stopListening();
     super.dispose();
   }
 
