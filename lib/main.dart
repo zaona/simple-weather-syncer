@@ -11,6 +11,7 @@ import 'weather_service.dart';
 import 'weather_models.dart';
 import 'settings_page.dart';
 import 'settings_service.dart';
+import 'sponsorship_page.dart';
 
 Future<void> main() async {
   // 加载环境变量
@@ -533,6 +534,13 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
     }
   }
 
+  /// 打开赞助页面
+  Future<void> _openSponsorship() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const SponsorshipPage()),
+    );
+  }
+
   /// 加载 FAB 按钮设置和兼容模式
   Future<void> _loadFabActionType() async {
     final fabType = await SettingsService.loadFabActionType();
@@ -779,6 +787,14 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
                           ],
                         ),
                       ),
+                      // 赞助按钮
+                      IconButton(
+                        onPressed: _openSponsorship,
+                        icon: const Icon(Icons.favorite),
+                        tooltip: '赞助支持',
+                        iconSize: 26,
+                        color: colorScheme.primary,
+                      ),
                       // 设置按钮
                       IconButton(
                         onPressed: _openSettings,
@@ -791,11 +807,13 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
                   ),
                 ),
                 
+                const SizedBox(height: 4),
+                
                 // 设备连接卡片（重构版）
                 _buildDeviceCard(colorScheme),
                 
                 // 天气卡片（统一：未配置/加载中/已配置）
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 _buildWeatherDataCard(colorScheme),
                 
                 // 底部留白（当有 FAB 时）

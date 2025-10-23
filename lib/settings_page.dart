@@ -37,6 +37,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+
   /// 保存 FAB 按钮类型设置
   Future<void> _saveFabActionType(FabActionType type) async {
     await SettingsService.saveFabActionType(type);
@@ -95,32 +96,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  /// 打开捐赠页面
-  Future<void> _openDonationPage() async {
-    final Uri url = Uri.parse('https://afdian.com/a/zaona');
-    
-    try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        if (!mounted) return;
-        _showInfoDialog(
-          title: '无法打开链接',
-          message: '无法打开捐赠页面，请稍后重试',
-          icon: Icons.error_outline,
-          iconColor: Colors.red,
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _showInfoDialog(
-        title: '打开失败',
-        message: '打开捐赠页面时出现错误：$e',
-        icon: Icons.error_outline,
-        iconColor: Colors.red,
-      );
-    }
-  }
 
   /// 显示API配置底部弹窗
   Future<void> _showApiConfigDialog() async {
@@ -221,26 +196,8 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       backgroundColor: colorScheme.surface,
       body: ListView(
+        padding: const EdgeInsets.all(4),
         children: [
-          // FAB 按钮功能选择
-          ListTile(
-            leading: Icon(
-              Icons.touch_app,
-              color: colorScheme.primary,
-            ),
-            title: const Text('主页浮动按钮功能'),
-            subtitle: Text(
-              _fabActionType == FabActionType.sync
-                  ? '当前：同步到手表'
-                  : '当前：复制数据',
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            onTap: () => _showFabActionTypeDialog(),
-          ),
-          
           // 高级同步模式开关
           SwitchListTile(
             secondary: Icon(
@@ -262,6 +219,25 @@ class _SettingsPageState extends State<SettingsPage> {
                 _compatibilityMode = !value;
               });
             },
+          ),
+          
+          // FAB 按钮功能选择
+          ListTile(
+            leading: Icon(
+              Icons.touch_app,
+              color: colorScheme.primary,
+            ),
+            title: const Text('主页浮动按钮功能'),
+            subtitle: Text(
+              _fabActionType == FabActionType.sync
+                  ? '当前：同步到手表'
+                  : '当前：复制数据',
+            ),
+            trailing: Icon(
+              Icons.chevron_right,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            onTap: () => _showFabActionTypeDialog(),
           ),
           
           // API 配置
@@ -303,21 +279,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     color: colorScheme.onSurfaceVariant,
                   ),
             onTap: _isCheckingUpdate ? null : _checkForUpdate,
-          ),
-          
-          // 捐赠
-          ListTile(
-            leading: Icon(
-              Icons.favorite,
-              color: colorScheme.primary,
-            ),
-            title: const Text('捐赠'),
-            subtitle: const Text('支持开发者持续更新'),
-            trailing: Icon(
-              Icons.open_in_new,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            onTap: _openDonationPage,
           ),
         ],
       ),
@@ -375,6 +336,7 @@ class _SettingsPageState extends State<SettingsPage> {
       },
     );
   }
+
 }
 
 /// API配置底部弹窗

@@ -359,9 +359,9 @@ class _WeatherPageState extends State<WeatherPage> {
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
-                16.0,
-                16.0,
-                16.0,
+                20.0,
+                20.0,
+                20.0,
                 _selectedLocation != null ? 88.0 : 16.0,
               ),
               child: Column(
@@ -387,7 +387,7 @@ class _WeatherPageState extends State<WeatherPage> {
                     ),
                   ),
                   
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   
                   // 搜索框
                   _buildSearchBox(colorScheme),
@@ -613,7 +613,7 @@ class _WeatherPageState extends State<WeatherPage> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(20.0),
       child: SafeArea(
         top: false,
         child: SizedBox(
