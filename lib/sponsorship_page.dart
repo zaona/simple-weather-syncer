@@ -257,7 +257,7 @@ class _SponsorshipPageState extends State<SponsorshipPage> {
                             children: [
                               _buildSpecialThanksItem(
                                 context,
-                                'Waijade',
+                                'WaiJade',
                                 '为快应用与同步器插件贡献代码',
                               ),
                               const SizedBox(height: 12),
