@@ -35,6 +35,12 @@ ANDROID_PACKAGE_NAME=com.application.zaona.weather
    
 # Android 应用签名证书 SHA-1 指纹
 ANDROID_CERT_SHA1=your_sha1_fingerprint_here
+
+# 爱发电用户ID（用于获取赞助者列表）
+AFDIAN_USER_ID=your_afdian_user_id_here
+
+# 爱发电API令牌（用于获取赞助者列表）
+AFDIAN_TOKEN=your_afdian_token_here
 ```
 
 ### 2. 安装依赖
@@ -45,7 +51,7 @@ flutter pub get
 
 ### 3. 签名配置
 
-在 `/android/app` 目录下放置 `key.kts`（签名文件）
+在 `/android/app` 目录下放置 `your-key.jks`（签名文件）
 
 在 `/android` 目录下放置 `key.properties` 文件，格式如下：
 
@@ -59,16 +65,16 @@ storeFile=../app/your-keystore.jks
 ### 4. 构建应用
 
 ```bash
-# 调试版本
+# 调试运行
 flutter run
 
-# 发布测试版本
+# 发布 APK（单包）
 flutter build apk --release --tree-shake-icons
 
-# 发布正式版本（分架构 APK）
+# 发布 APK（按架构拆分）
 flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/app/outputs/symbols --tree-shake-icons
 
-# 构建 App Bundle
+# 发布 App Bundle
 flutter build appbundle --release --obfuscate --split-debug-info=build/app/outputs/symbols --tree-shake-icons
 ```
 
