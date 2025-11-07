@@ -1,12 +1,15 @@
 package com.application.zaona.weather;
 
 import android.content.Context;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
+import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 
+import com.xiaomi.xms.wearable.Status;
 import com.xiaomi.xms.wearable.Wearable;
 import com.xiaomi.xms.wearable.auth.AuthApi;
 import com.xiaomi.xms.wearable.auth.Permission;
@@ -15,11 +18,15 @@ import com.xiaomi.xms.wearable.message.OnMessageReceivedListener;
 import com.xiaomi.xms.wearable.node.Node;
 import com.xiaomi.xms.wearable.node.NodeApi;
 import com.xiaomi.xms.wearable.notify.NotifyApi;
-import com.xiaomi.xms.wearable.Status;
-import com.xiaomi.xms.wearable.tasks.OnSuccessListener;
-import com.xiaomi.xms.wearable.tasks.OnFailureListener;
+import com.xiaomi.xms.wearable.service.OnServiceConnectionListener;
+import com.xiaomi.xms.wearable.service.ServiceApi;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.MethodCall;
@@ -29,83 +36,50 @@ import io.flutter.plugin.common.MethodChannel.Result;
 
 public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler {
     private static final String CHANNEL = "wearable_message_channel";
-    private static final String TAG = "WearableMessageHandler";
-    
-    private Context context;
+
+    private Context applicationContext;
     private MethodChannel channel;
-    private NodeApi nodeApi;
-    private MessageApi messageApi;
-    private AuthApi authApi;
-    private NotifyApi notifyApi;
-    private Node currentNode;
-    private OnMessageReceivedListener messageListener;
     private Handler mainHandler;
+    private WearableSdkManager sdkManager;
 
     @Override
-    public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
-        context = flutterPluginBinding.getApplicationContext();
-        channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), CHANNEL);
-        channel.setMethodCallHandler(this);
-        
-        // 初始化主线程Handler
+    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+        applicationContext = binding.getApplicationContext();
+        channel = new MethodChannel(binding.getBinaryMessenger(), CHANNEL);
         mainHandler = new Handler(Looper.getMainLooper());
-        
-        // 初始化小米运动健康SDK API
-        nodeApi = Wearable.getNodeApi(context);
-        messageApi = Wearable.getMessageApi(context);
-        authApi = Wearable.getAuthApi(context);
-        notifyApi = Wearable.getNotifyApi(context);
-        
-        // 初始化消息监听器
-        messageListener = new OnMessageReceivedListener() {
-            @Override
-            public void onMessageReceived(@NonNull String nodeId, @NonNull byte[] message) {
-                final String messageStr = new String(message);
-                Log.d(TAG, "收到来自设备的消息: " + messageStr);
-                // 在主线程中将消息发送到Flutter端
-                mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        channel.invokeMethod("onMessageReceived", messageStr);
-                        Log.d(TAG, "已将消息发送到Flutter端");
-                    }
-                });
-            }
-        };
+        sdkManager = new WearableSdkManager(applicationContext, channel, mainHandler);
+        channel.setMethodCallHandler(this);
     }
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
         switch (call.method) {
             case "getConnectedNodes":
-                getConnectedNodes(result);
+                sdkManager.getConnectedNode(result);
                 break;
             case "requestPermissions":
-                requestPermissions(result);
+                sdkManager.requestPermissions(result);
                 break;
             case "sendMessage":
-                String message = call.argument("message");
-                sendMessage(message, result);
+                sdkManager.sendMessage(call.argument("message"), result);
                 break;
             case "sendNotification":
-                String title = call.argument("title");
-                String notifyMessage = call.argument("message");
-                sendNotification(title, notifyMessage, result);
+                sdkManager.sendNotification(call.argument("title"), call.argument("message"), result);
                 break;
             case "startListening":
-                startListening(result);
+                sdkManager.startListening(result);
                 break;
             case "stopListening":
-                stopListening(result);
+                sdkManager.stopListening(result);
                 break;
             case "checkWearableApp":
-                checkWearableApp(result);
+                sdkManager.checkWearableApp(result);
                 break;
             case "checkWearApp":
-                checkWearApp(result);
+                sdkManager.checkWearApp(result);
                 break;
             case "launchWearApp":
-                launchWearApp(result);
+                sdkManager.launchWearApp(call.argument("path"), result);
                 break;
             default:
                 result.notImplemented();
@@ -113,300 +87,395 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
         }
     }
 
-    private void getConnectedNodes(Result result) {
-        if (nodeApi == null) {
-            result.error("SDK_ERROR", "NodeApi未初始化", null);
-            return;
-        }
-        
-        Log.d(TAG, "开始获取连接的设备...");
-        nodeApi.getConnectedNodes()
-                .addOnSuccessListener(new OnSuccessListener<List<Node>>() {
-                    @Override
-                    public void onSuccess(List<Node> nodes) {
-                        Log.d(TAG, "获取设备列表成功，设备数量: " + nodes.size());
-                        if (nodes.size() > 0) {
-                            currentNode = nodes.get(0);
-                            Log.d(TAG, "找到连接的设备: ID=" + currentNode.id + ", Name=" + currentNode.name);
-                            result.success("设备连接成功: Name=" + currentNode.name + ", ID=" + currentNode.id);
-                        } else {
-                            Log.w(TAG, "没有找到连接的设备");
-                            result.error("NO_DEVICE", "没有找到连接的穿戴设备\n\n请确保：\n1. 穿戴设备已与手机配对\n2. 小米运动健康已安装\n3. 设备处于连接状态", null);
-                        }
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "获取连接设备失败: " + e.getMessage());
-                        result.error("CONNECTION_ERROR", "获取连接设备失败\n\n" + e.getMessage() + "\n\n请确保：\n1. 小米运动健康已安装\n2. 设备已配对连接", null);
-                    }
-                });
-    }
-
-    private void requestPermissions(Result result) {
-        if (authApi == null) {
-            result.error("SDK_ERROR", "AuthApi未初始化", null);
-            return;
-        }
-        
-        if (currentNode == null) {
-            result.error("NO_DEVICE", "没有连接的设备\n\n请先连接设备", null);
-            return;
-        }
-        
-        Log.d(TAG, "开始申请权限，设备ID: " + currentNode.id);
-        Permission[] permissions = {Permission.DEVICE_MANAGER, Permission.NOTIFY};
-        authApi.requestPermission(currentNode.id, permissions)
-                .addOnSuccessListener(new OnSuccessListener<Permission[]>() {
-                    @Override
-                    public void onSuccess(Permission[] grantedPermissions) {
-                        Log.d(TAG, "权限申请成功，获得权限数量: " + grantedPermissions.length);
-                        String permissionNames = "";
-                        for (Permission p : grantedPermissions) {
-                            permissionNames += p.toString() + " ";
-                        }
-                        result.success("权限申请成功，获得权限: " + permissionNames.trim());
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "权限申请失败: " + e.getMessage());
-                        String errorMsg = "权限申请失败\n\n" + e.getMessage() + "\n\n请确保：\n1. 设备上已安装简明天气快应用\n2. 简明天气快应用为最新版本";
-                        result.error("PERMISSION_ERROR", errorMsg, null);
-                    }
-                });
-    }
-
-    private void sendMessage(String message, Result result) {
-        if (messageApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
-            return;
-        }
-        
-        Log.d(TAG, "发送消息: " + message);
-        messageApi.sendMessage(currentNode.id, message.getBytes())
-                .addOnSuccessListener(new OnSuccessListener<Void>() {
-                    @Override
-                    public void onSuccess(Void aVoid) {
-                        Log.d(TAG, "消息发送成功");
-                        result.success("✓ 消息发送成功");
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "消息发送失败: " + e.getMessage());
-                        result.error("MESSAGE_ERROR", "消息发送失败\n\n" + e.getMessage(), null);
-                    }
-                });
-    }
-
-    private void sendNotification(String title, String message, Result result) {
-        if (notifyApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
-            return;
-        }
-        
-        if (title == null || title.isEmpty()) {
-            result.error("INVALID_PARAMS", "标题不能为空", null);
-            return;
-        }
-        
-        if (message == null || message.isEmpty()) {
-            result.error("INVALID_PARAMS", "消息内容不能为空", null);
-            return;
-        }
-        
-        Log.d(TAG, "发送通知 - 标题: " + title + ", 内容: " + message);
-        notifyApi.sendNotify(currentNode.id, title, message)
-                .addOnSuccessListener(new OnSuccessListener<Status>() {
-                    @Override
-                    public void onSuccess(Status status) {
-                        Log.d(TAG, "通知发送成功，状态: " + status);
-                        result.success("✓ 通知发送成功");
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "通知发送失败: " + e.getMessage());
-                        result.error("NOTIFY_ERROR", "通知发送失败\n\n" + e.getMessage(), null);
-                    }
-                });
-    }
-
-    private void startListening(Result result) {
-        if (messageApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
-            return;
-        }
-        
-        Log.d(TAG, "开始监听消息，设备ID: " + currentNode.id);
-        messageApi.addListener(currentNode.id, messageListener)
-                .addOnSuccessListener(new OnSuccessListener<Void>() {
-                    @Override
-                    public void onSuccess(Void aVoid) {
-                        Log.d(TAG, "消息监听器注册成功，设备ID: " + currentNode.id);
-                        result.success("✓ 开始监听消息，设备ID: " + currentNode.id);
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "开始监听失败: " + e.getMessage());
-                        result.error("LISTEN_ERROR", "开始监听失败\n\n" + e.getMessage(), null);
-                    }
-                });
-    }
-
-    private void stopListening(Result result) {
-        if (messageApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
-            return;
-        }
-        
-        Log.d(TAG, "停止监听消息，设备ID: " + currentNode.id);
-        messageApi.removeListener(currentNode.id)
-                .addOnSuccessListener(new OnSuccessListener<Void>() {
-                    @Override
-                    public void onSuccess(Void aVoid) {
-                        Log.d(TAG, "消息监听器移除成功，设备ID: " + currentNode.id);
-                        result.success("✓ 停止监听消息");
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "停止监听失败: " + e.getMessage());
-                        result.error("STOP_LISTEN_ERROR", "停止监听失败\n\n" + e.getMessage(), null);
-                    }
-                });
-    }
-
-    private void checkWearableApp(Result result) {
-        if (nodeApi == null) {
-            result.error("SDK_ERROR", "SDK未初始化", null);
-            return;
-        }
-        
-        try {
-            boolean isHealthInstalled = false;
-            try {
-                context.getPackageManager().getPackageInfo("com.mi.health", 0);
-                isHealthInstalled = true;
-            } catch (Exception ignored) {}
-            
-            if (isHealthInstalled) {
-                result.success("✓ 小米运动健康已安装");
-            } else {
-                result.error("APP_NOT_INSTALLED", 
-                    "未检测到小米运动健康\n\n" +
-                    "请从应用商店安装：\n" +
-                    "小米运动健康 (com.mi.health)", 
-                    null);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "检查运动健康应用失败: " + e.getMessage());
-            result.error("CHECK_FAILED", "检查失败\n\n" + e.getMessage(), null);
-        }
-    }
-
-    private void checkWearApp(Result result) {
-        if (nodeApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
-            return;
-        }
-        
-        if (authApi == null) {
-            result.error("SDK_ERROR", "SDK未初始化", null);
-            return;
-        }
-        
-        Log.d(TAG, "检查DEVICE_MANAGER权限，设备ID: " + currentNode.id);
-        authApi.checkPermission(currentNode.id, Permission.DEVICE_MANAGER)
-                .addOnSuccessListener(new OnSuccessListener<Boolean>() {
-                    @Override
-                    public void onSuccess(Boolean hasPermission) {
-                        if (hasPermission) {
-                            Log.d(TAG, "检查穿戴设备端应用是否安装");
-                            nodeApi.isWearAppInstalled(currentNode.id)
-                                    .addOnSuccessListener(new OnSuccessListener<Boolean>() {
-                                        @Override
-                                        public void onSuccess(Boolean isInstalled) {
-                                            Log.d(TAG, "穿戴设备端应用检查结果: " + isInstalled);
-                                            if (isInstalled) {
-                                                result.success("✓ 快应用已安装");
-                                            } else {
-                                                result.error("WEAR_APP_NOT_INSTALLED", 
-                                                    "未检测到简明天气快应用\n\n" +
-                                                    "请确保：\n" +
-                                                    "请从 AstroBox 安装：\n" +
-                                                    "简明天气快应用", 
-                                                    null);
-                                            }
-                                        }
-                                    })
-                                    .addOnFailureListener(new OnFailureListener() {
-                                        @Override
-                                        public void onFailure(@NonNull Exception e) {
-                                            Log.e(TAG, "检查快应用失败: " + e.getMessage());
-                                            result.error("CHECK_FAILED", "检查失败\n\n" + e.getMessage(), null);
-                                        }
-                                    });
-                        } else {
-                            Log.w(TAG, "没有DEVICE_MANAGER权限");
-                            result.error("PERMISSION_REQUIRED", 
-                                "需要先申请权限\n\n" +
-                                "检查快应用需要设备管理权限", 
-                                null);
-                        }
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "检查权限失败: " + e.getMessage());
-                        result.error("PERMISSION_CHECK_FAILED", "检查权限失败\n\n" + e.getMessage(), null);
-                    }
-                });
-    }
-
-    private void launchWearApp(Result result) {
-        if (nodeApi == null || currentNode == null) {
-            result.error("SDK_ERROR", "设备未初始化\n\n请先连接设备", null);
-            return;
-        }
-        
-        Log.d(TAG, "启动快应用，设备ID: " + currentNode.id);
-        nodeApi.launchWearApp(currentNode.id, "/")
-                .addOnSuccessListener(new OnSuccessListener<Void>() {
-                    @Override
-                    public void onSuccess(Void aVoid) {
-                        Log.d(TAG, "启动快应用成功");
-                        result.success("✓ 快应用启动成功");
-                    }
-                })
-                .addOnFailureListener(new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.e(TAG, "启动快应用失败: " + e.getMessage());
-                        result.error("LAUNCH_FAILED", 
-                            "启动快应用失败\n\n" + e.getMessage() + "\n\n" +
-                            "请确保：\n" +
-                            "1. 已安装简明天气快应用\n" +
-                            "2. 简明天气快应用为最新版本", 
-                            null);
-                    }
-                });
-    }
-
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
         channel.setMethodCallHandler(null);
-        if (messageApi != null && currentNode != null) {
-            messageApi.removeListener(currentNode.id);
+        if (sdkManager != null) {
+            sdkManager.dispose();
+            sdkManager = null;
+        }
+    }
+
+
+    private static final class WearableSdkManager {
+        private final Context context;
+        private final MethodChannel channel;
+        private final Handler mainHandler;
+
+        private final NodeApi nodeApi;
+        private final MessageApi messageApi;
+        private final AuthApi authApi;
+        private final NotifyApi notifyApi;
+        private final ServiceApi serviceApi;
+
+        private Node currentNode;
+        private boolean listening;
+
+        private final OnMessageReceivedListener messageListener;
+
+        private final OnServiceConnectionListener serviceConnectionListener;
+
+        WearableSdkManager(Context context, MethodChannel channel, Handler handler) {
+            this.context = context.getApplicationContext();
+            this.channel = channel;
+            this.mainHandler = handler;
+            nodeApi = Wearable.getNodeApi(this.context);
+            messageApi = Wearable.getMessageApi(this.context);
+            authApi = Wearable.getAuthApi(this.context);
+            notifyApi = Wearable.getNotifyApi(this.context);
+            serviceApi = Wearable.getServiceApi(this.context);
+
+            messageListener = (nodeId, bytes) -> {
+                final String message = new String(bytes, StandardCharsets.UTF_8);
+                mainHandler.post(() -> channel.invokeMethod("onMessageReceived", message));
+            };
+
+            serviceConnectionListener = new OnServiceConnectionListener() {
+                @Override
+                public void onServiceConnected() {
+                    emitServiceStatus(true);
+                }
+
+                @Override
+                public void onServiceDisconnected() {
+                    emitServiceStatus(false);
+                }
+            };
+
+            if (serviceApi != null) {
+                serviceApi.registerServiceConnectionListener(serviceConnectionListener);
+            }
+        }
+
+        void dispose() {
+            if (serviceApi != null) {
+                serviceApi.unregisterServiceConnectionListener(serviceConnectionListener);
+            }
+            if (messageApi != null && currentNode != null && listening) {
+                messageApi.removeListener(currentNode.id);
+            }
+        }
+        
+        void getConnectedNode(Result result) {
+            if (nodeApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+
+            nodeApi.getConnectedNodes()
+                    .addOnSuccessListener(nodes -> {
+                        if (nodes == null || nodes.isEmpty()) {
+                            result.success(WearableErrorManager.createError(
+                                    WearableErrorManager.CODE_NO_DEVICE,
+                                    null,
+                                    null
+                            ));
+                            return;
+                        }
+
+                        currentNode = nodes.get(0);
+                        Map<String, Object> nodeMap = buildNodeMap(currentNode);
+                        result.success(WearableErrorManager.createSuccess("设备连接成功", nodeMap));
+                    })
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_CONNECTION_ERROR,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void requestPermissions(Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            if (authApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+
+            Permission[] permissions = new Permission[]{Permission.DEVICE_MANAGER, Permission.NOTIFY};
+            authApi.requestPermission(currentNode.id, permissions)
+                    .addOnSuccessListener(granted -> {
+                        List<String> grantedNames = new ArrayList<>();
+                        if (granted != null) {
+                            for (Permission permission : granted) {
+                                grantedNames.add(permission.toString());
+                            }
+                        }
+                        result.success(WearableErrorManager.createSuccess("权限申请成功", grantedNames));
+                    })
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_PERMISSION_ERROR,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void sendMessage(String message, Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            if (messageApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+            if (TextUtils.isEmpty(message)) {
+                result.success(WearableErrorManager.createParamError("消息内容"));
+                return;
+            }
+
+            messageApi.sendMessage(currentNode.id, message.getBytes(StandardCharsets.UTF_8))
+                    .addOnSuccessListener(unused -> result.success(WearableErrorManager.createSuccess("消息发送成功", null)))
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_MESSAGE_ERROR,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void sendNotification(String title, String message, Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            if (notifyApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+            if (TextUtils.isEmpty(title)) {
+                result.success(WearableErrorManager.createParamError("通知标题"));
+                return;
+            }
+            if (TextUtils.isEmpty(message)) {
+                result.success(WearableErrorManager.createParamError("通知内容"));
+                return;
+            }
+
+            notifyApi.sendNotify(currentNode.id, title, message)
+                    .addOnSuccessListener(status ->
+                            result.success(WearableErrorManager.createSuccess("通知发送成功", Collections.singletonMap("status", status.toString()))))
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_NOTIFY_ERROR,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void startListening(Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            if (messageApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+            if (listening) {
+                result.success(WearableErrorManager.createSuccess("已在监听消息", buildListeningData(true)));
+                return;
+            }
+
+            messageApi.addListener(currentNode.id, messageListener)
+                    .addOnSuccessListener(unused -> {
+                        listening = true;
+                        result.success(WearableErrorManager.createSuccess("开始监听消息", buildListeningData(true)));
+                    })
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_LISTEN_ERROR,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void stopListening(Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            if (messageApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+            if (!listening) {
+                result.success(WearableErrorManager.createSuccess("监听已停止", buildListeningData(false)));
+                return;
+            }
+
+            messageApi.removeListener(currentNode.id)
+                    .addOnSuccessListener(unused -> {
+                        listening = false;
+                        result.success(WearableErrorManager.createSuccess("停止监听消息", buildListeningData(false)));
+                    })
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_STOP_LISTEN_ERROR,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void checkWearableApp(Result result) {
+            PackageManager packageManager = context.getPackageManager();
+            try {
+                packageManager.getPackageInfo("com.mi.health", 0);
+                result.success(WearableErrorManager.createSuccess(
+                        "小米运动健康已安装",
+                        Collections.singletonMap("installed", true)
+                ));
+            } catch (PackageManager.NameNotFoundException e) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_APP_NOT_INSTALLED,
+                        Collections.singletonMap("installed", false)
+                ));
+            } catch (Exception e) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_CHECK_FAILED,
+                        e,
+                        null
+                ));
+            }
+        }
+
+        void checkWearApp(Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            if (authApi == null) {
+                result.success(WearableErrorManager.createError(
+                        WearableErrorManager.CODE_SDK_ERROR,
+                        null,
+                        null
+                ));
+                return;
+            }
+
+            Permission[] permissions = new Permission[]{Permission.DEVICE_MANAGER};
+            authApi.checkPermissions(currentNode.id, permissions)
+                    .addOnSuccessListener(results -> {
+                        boolean granted = results != null && results.length > 0 && results[0];
+                        if (!granted) {
+                            result.success(WearableErrorManager.createError(
+                                    WearableErrorManager.CODE_PERMISSION_REQUIRED,
+                                    null,
+                                    null
+                            ));
+                            return;
+                        }
+                        nodeApi.isWearAppInstalled(currentNode.id)
+                                .addOnSuccessListener(installed -> {
+                                    if (installed) {
+                                        result.success(WearableErrorManager.createSuccess(
+                                                "快应用已安装",
+                                                Collections.singletonMap("installed", true)
+                                        ));
+                                    } else {
+                                        result.success(WearableErrorManager.createError(
+                                                WearableErrorManager.CODE_WEAR_APP_NOT_INSTALLED,
+                                                Collections.singletonMap("installed", false)
+                                        ));
+                                    }
+                                })
+                                .addOnFailureListener(e -> {
+                                    result.success(WearableErrorManager.createError(
+                                            WearableErrorManager.CODE_CHECK_FAILED,
+                                            e,
+                                            null
+                                    ));
+                                });
+                    })
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_PERMISSION_CHECK_FAILED,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        void launchWearApp(String path, Result result) {
+            if (!ensureNode(result)) {
+                return;
+            }
+            String launchPath = TextUtils.isEmpty(path) ? "/" : path;
+            nodeApi.launchWearApp(currentNode.id, launchPath)
+                    .addOnSuccessListener(unused ->
+                            result.success(WearableErrorManager.createSuccess("快应用启动成功", Collections.singletonMap("path", launchPath))))
+                    .addOnFailureListener(e -> {
+                        result.success(WearableErrorManager.createError(
+                                WearableErrorManager.CODE_LAUNCH_FAILED,
+                                e,
+                                null
+                        ));
+                    });
+        }
+
+        private boolean ensureNode(Result result) {
+            if (currentNode != null) {
+                return true;
+            }
+            result.success(WearableErrorManager.createError(
+                    WearableErrorManager.CODE_NO_DEVICE,
+                    null,
+                    null
+            ));
+            return false;
+        }
+
+        private void emitServiceStatus(boolean connected) {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("connected", connected);
+            payload.put("timestamp", System.currentTimeMillis());
+            mainHandler.post(() -> channel.invokeMethod("onServiceStatusChanged", payload));
+        }
+
+        private static Map<String, Object> buildNodeMap(Node node) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", node.id);
+            map.put("name", node.name);
+            map.put("attributes", new HashMap<>());
+            return map;
+        }
+
+        private Map<String, Object> buildListeningData(boolean listening) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("listening", listening);
+            if (currentNode != null) {
+                map.put("nodeId", currentNode.id);
+                map.put("nodeName", currentNode.name);
+            }
+            return map;
         }
     }
 }

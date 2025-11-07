@@ -572,33 +572,45 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
 
     try {
       final result = await WearableService.connectDevice();
-      
+      final hints = result.hints;
+      final details = result.details;
+      final retryable = result.retryable;
+       
       if (mounted) {
-        if (result['success']) {
-          // 连接成功，保存设备信息
+        if (result.success) {
+          final node = result.node;
           setState(() {
             _isConnected = true;
-            _deviceId = result['deviceId'] ?? '';
-            _deviceName = result['deviceName'] ?? '';
+            _deviceId = node?.id ?? '';
+            _deviceName = node?.name ?? '';
           });
           
-          // 显示成功弹窗
+          final baseMessage = result.message.isNotEmpty ? result.message : '设备已成功连接';
+          final successMessage = hints.isEmpty
+              ? baseMessage
+              : '$baseMessage\n\n建议：\n${hints.map((hint) => '• $hint').join('\n')}';
           _showInfoDialog(
             title: '连接成功',
-            message: '设备已成功连接',
+            message: successMessage,
             icon: Icons.check_circle,
             iconColor: Colors.green,
           );
         } else {
-          // 连接失败，清除设备信息
           setState(() {
             _isConnected = false;
             _deviceId = '';
             _deviceName = '';
           });
           
-          // 显示详细的错误对话框
-          _showErrorDialog(result['step'], result['message']);
+          final failedStep = result.step.isNotEmpty ? result.step : '未知步骤';
+          final errorMessage = result.message.isNotEmpty ? result.message : '请稍后重试';
+          _showErrorDialog(
+            failedStep,
+            errorMessage,
+            hints: hints,
+            details: details,
+            retryable: retryable,
+          );
         }
       }
     } finally {
@@ -679,10 +691,16 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
   }
 
   /// 显示错误对话框
-  void _showErrorDialog(String failedStep, String errorMessage) {
+  void _showErrorDialog(String failedStep, String errorMessage, {
+    List<String> hints = const <String>[],
+    String? details,
+    bool retryable = true,
+  }) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        final hasDetails = details != null && details.isNotEmpty;
+        final hasHints = hints.isNotEmpty;
         return AlertDialog(
           title: Row(
             children: [
@@ -695,25 +713,36 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '失败步骤：',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                failedStep,
-                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 15),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '失败原因：',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 4),
               Text(
                 errorMessage,
                 style: const TextStyle(fontSize: 15),
               ),
+              if (hasDetails) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  '详细信息：',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  details,
+                  style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ],
+              if (hasHints) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  '建议：',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                ...hints.map(
+                  (hint) => Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('• $hint', style: const TextStyle(fontSize: 14)),
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -721,13 +750,14 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('知道了'),
             ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _connectDevice();
-              },
-              child: const Text('重试'),
-            ),
+            if (retryable)
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _connectDevice();
+                },
+                child: const Text('重试'),
+              ),
           ],
         );
       },
