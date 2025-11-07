@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import '../models/sponsorship_models.dart';
+import '../services/sponsorship_service.dart';
 
 /// 赞助页面
 class SponsorshipPage extends StatefulWidget {
@@ -14,7 +13,7 @@ class SponsorshipPage extends StatefulWidget {
 }
 
 class _SponsorshipPageState extends State<SponsorshipPage> {
-  List<String> _sponsors = [];
+  List<Sponsor> _sponsors = const [];
   bool _isLoadingSponsors = false;
 
   @override
@@ -27,69 +26,14 @@ class _SponsorshipPageState extends State<SponsorshipPage> {
   Future<void> _loadSponsors() async {
     setState(() => _isLoadingSponsors = true);
 
-    try {
-      final sponsors = await _fetchSponsorsFromAfdian();
-      setState(() {
-        _sponsors = sponsors;
-        _isLoadingSponsors = false;
-      });
-    } catch (e) {
-      setState(() {
-        _sponsors = ['Zaona'];
-        _isLoadingSponsors = false;
-      });
-    }
-  }
+    final sponsors = await SponsorshipService.fetchSponsors();
 
-  /// 从爱发电API获取赞助者列表
-  Future<List<String>> _fetchSponsorsFromAfdian() async {
-    try {
-      const String apiUrl = 'https://afdian.com/api/open/query-sponsor';
-      final String userId = dotenv.env['AFDIAN_USER_ID'] ?? '';
-      final String token = dotenv.env['AFDIAN_TOKEN'] ?? '';
+    if (!mounted) return;
 
-      if (userId.isEmpty || token.isEmpty) {
-        return ['Zaona'];
-      }
-
-      final int ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final String paramsJson = json.encode({'page': 1});
-      final String signString =
-          '${token}params$paramsJson'
-          'ts$ts'
-          'user_id$userId';
-      final String sign = md5.convert(utf8.encode(signString)).toString();
-
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'user_id': userId,
-          'params': paramsJson,
-          'ts': ts,
-          'sign': sign,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        if (data['ec'] == 200 && data['data'] != null) {
-          final sponsors = data['data']['list'] as List<dynamic>? ?? [];
-          final sponsorNames = sponsors
-              .where((sponsor) {
-                final allSumAmountStr = sponsor['all_sum_amount'] as String? ?? '0.00';
-                final allSumAmount = double.tryParse(allSumAmountStr) ?? 0.0;
-                return allSumAmount >= 20.0;
-              })
-              .map((sponsor) => sponsor['user']['name'] as String)
-              .toList();
-          return sponsorNames;
-        }
-      }
-      return ['Zaona'];
-    } catch (e) {
-      return ['Zaona'];
-    }
+    setState(() {
+      _sponsors = sponsors;
+      _isLoadingSponsors = false;
+    });
   }
 
   /// 打开赞助页面
@@ -315,9 +259,9 @@ class _SponsorshipPageState extends State<SponsorshipPage> {
                               runSpacing: 0,
                               children: _sponsors
                                   .map(
-                                    (name) => Chip(
+                                    (sponsor) => Chip(
                                       label: Text(
-                                        name,
+                                        sponsor.name,
                                         style: textTheme.bodySmall?.copyWith(
                                           fontWeight: FontWeight.w500,
                                         ),

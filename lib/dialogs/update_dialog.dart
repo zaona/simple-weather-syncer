@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'update_models.dart';
+import '../models/update_models.dart';
 
 /// 强制更新弹窗
 /// 此弹窗无法通过返回键关闭，用户必须点击更新按钮

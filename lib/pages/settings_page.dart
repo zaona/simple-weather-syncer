@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'settings_service.dart';
-import 'update_service.dart';
-import 'update_dialog.dart';
-import 'weather_service.dart';
+import '../services/settings_service.dart';
+import '../services/update_service.dart';
+import '../dialogs/update_dialog.dart';
+import '../services/weather_service.dart';
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {

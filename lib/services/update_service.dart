@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'update_models.dart';
+import '../models/update_models.dart';
 
 class UpdateService {
   // Gitee仓库的更新配置文件URL

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'weather_models.dart';
+import '../models/weather_models.dart';
 import 'settings_service.dart';
 
 /// 天气服务类

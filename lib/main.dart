@@ -3,15 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'wearable_service.dart';
-import 'weather_page.dart';
+import 'pages/weather_page.dart';
 import 'sdk_test_page.dart';
-import 'update_service.dart';
-import 'update_dialog.dart';
-import 'weather_service.dart';
-import 'weather_models.dart';
-import 'settings_page.dart';
-import 'settings_service.dart';
-import 'sponsorship_page.dart';
+import 'services/update_service.dart';
+import 'dialogs/update_dialog.dart';
+import 'services/weather_service.dart';
+import 'models/weather_models.dart';
+import 'pages/settings_page.dart';
+import 'services/settings_service.dart';
+import 'pages/sponsorship_page.dart';
 
 Future<void> main() async {
   // 加载环境变量
