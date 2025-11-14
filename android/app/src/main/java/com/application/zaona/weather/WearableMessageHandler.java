@@ -355,10 +355,19 @@ public class WearableMessageHandler implements FlutterPlugin, MethodCallHandler 
                         Collections.singletonMap("installed", true)
                 ));
             } catch (PackageManager.NameNotFoundException e) {
-                result.success(WearableErrorManager.createError(
-                        WearableErrorManager.CODE_APP_NOT_INSTALLED,
-                        Collections.singletonMap("installed", false)
-                ));
+                // 检查另一个包名 com.xiaomi.wearable
+                try {
+                    packageManager.getPackageInfo("com.xiaomi.wearable", 0);
+                    result.success(WearableErrorManager.createSuccess(
+                            "小米运动健康已安装",
+                            Collections.singletonMap("installed", true)
+                    ));
+                } catch (PackageManager.NameNotFoundException e2) {
+                    result.success(WearableErrorManager.createError(
+                            WearableErrorManager.CODE_APP_NOT_INSTALLED,
+                            Collections.singletonMap("installed", false)
+                    ));
+                }
             } catch (Exception e) {
                 result.success(WearableErrorManager.createError(
                         WearableErrorManager.CODE_CHECK_FAILED,
