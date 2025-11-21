@@ -190,8 +190,13 @@ class _WearableCommunicationPageState extends State<WearableCommunicationPage> w
         );
       }
     } else if (result.hasUpdate && result.updateInfo != null) {
-      // 有新版本，显示强制更新弹窗
-      showForceUpdateDialog(context, result.updateInfo!);
+      // 有新版本，根据 forceUpdate 决定显示强制或可选更新弹窗
+      final updateInfo = result.updateInfo!;
+      if (updateInfo.forceUpdate) {
+        showForceUpdateDialog(context, updateInfo);
+      } else {
+        await showOptionalUpdateDialog(context, updateInfo);
+      }
     } else {
       // 已是最新版本
       if (showNoUpdate) {
