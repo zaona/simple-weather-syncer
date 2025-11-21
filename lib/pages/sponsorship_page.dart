@@ -26,14 +26,24 @@ class _SponsorshipPageState extends State<SponsorshipPage> {
   Future<void> _loadSponsors() async {
     setState(() => _isLoadingSponsors = true);
 
-    final sponsors = await SponsorshipService.fetchSponsors();
+    try {
+      final sponsors = await SponsorshipService.fetchSponsors();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _sponsors = sponsors;
-      _isLoadingSponsors = false;
-    });
+      setState(() {
+        _sponsors = sponsors;
+        _isLoadingSponsors = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingSponsors = false;
+      });
+
+      _showErrorDialog('获取赞助者数据失败');
+    }
   }
 
   /// 打开赞助页面
