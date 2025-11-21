@@ -144,3 +144,69 @@ void showForceUpdateDialog(BuildContext context, AppUpdateInfo updateInfo) {
   );
 }
 
+/// 显示可选更新弹窗
+/// 用户可以点击"稍后再说"来关闭弹窗
+Future<void> showOptionalUpdateDialog(
+  BuildContext context,
+  AppUpdateInfo updateInfo,
+) async {
+  final colorScheme = Theme.of(context).colorScheme;
+
+  Future<void> openLink() async {
+    final url = Uri.parse(updateInfo.downloadUrl);
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('无法打开下载链接'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  if (!context.mounted) {
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('发现新版本'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              updateInfo.versionName,
+              style: TextStyle(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(updateInfo.updateDescription),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('稍后再说'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await openLink();
+            },
+            icon: const Icon(Icons.download),
+            label: const Text('立即更新'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
